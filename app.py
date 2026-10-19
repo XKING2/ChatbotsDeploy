@@ -25,6 +25,10 @@ import config
 from LLM.chatbot import ImmigrationChatbot
 from models import db, Admin, Conversation, Message
 from knowledge_base import ingest_document
+from datetime import timezone
+from zoneinfo import ZoneInfo
+
+WITA = ZoneInfo("Asia/Makassar")
 
 
 app = Flask(__name__)
@@ -208,13 +212,12 @@ def chat():
     db.session.commit()
 
     return jsonify({
-        "conversation_id": conversation.id,
-        "answer": answer,
-        "time": bot_message.created_at.strftime("%H.%M"),
-        # Useful for UI/debugging; do not expose retrieved document contents.
-        "found": found,
-        "status": result.get("status"),
-    })
+    "conversation_id": conversation.id,
+    "answer": answer,
+    "time": format_wita(bot_message.created_at),
+    "found": found,
+    "status": result.get("status"),
+})
 
 
 @app.route("/api/conversations", methods=["GET"])
@@ -240,6 +243,16 @@ def get_conversation_messages(conversation_id):
         return jsonify({"error": "Percakapan tidak ditemukan"}), 404
 
     return jsonify([message.to_dict() for message in conversation.messages])
+
+def format_wita(dt):
+    if dt is None:
+        return None
+
+    # Timestamp database yang naive diasumsikan tersimpan dalam UTC.
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+
+    return dt.astimezone(WITA).strftime("%H.%M")
 
 
 # ============================================================
