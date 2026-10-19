@@ -8,6 +8,8 @@ from config import (
     EMBEDDING_MODEL_1,
 )
 
+from LLM.embedding_service import create_embedding
+
 
 EMBEDDING_ROUTES = [
     {

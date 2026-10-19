@@ -3,7 +3,8 @@ from urllib.parse import quote_plus
 
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(override=True)
+
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GEMINI_API_KEY_1 = os.getenv("GEMINI_API_KEY_1")
@@ -14,11 +15,24 @@ EMBEDDING_MODEL_2 = os.getenv("EMBEDDING_MODEL_2")
 
 LLM_MODEL = os.getenv("LLM_MODEL")
 
+print("=== GEMINI CONFIG CHECK ===")
+print(
+    "Environment key tersedia:",
+    bool(os.getenv("GEMINI_API_KEY"))
+)
+print(
+    "Config key tersedia:",
+    bool(GEMINI_API_KEY)
+)
+print(
+    "Environment sama dengan config:",
+    os.getenv("GEMINI_API_KEY") == GEMINI_API_KEY
+)
+print("===========================")
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# DATA_DIR bisa diarahkan lewat environment variable (di Railway: /data,
-# yaitu mount path volume). Kalau tidak di-set, tetap ./data seperti dulu,
-# jadi cara jalan di laptop TIDAK berubah.
+
 DATA_DIR = os.getenv("DATA_DIR") or os.path.join(BASE_DIR, "data")
 PDF_FOLDER = os.path.join(DATA_DIR, "pdf")
 CHROMA_DB_PATH = os.path.join(DATA_DIR, "chroma_db")
