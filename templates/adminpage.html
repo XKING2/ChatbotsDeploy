@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Admin - Kantor Imigrasi Chatbot</title>
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/auth.css') }}">
+
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://unpkg.com/@lottiefiles/lottie-player@latest/dist/lottie-player.js"></script>
+</head>
+
+<body>
+
+<div class="container">
+
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+
+        <img src="{{ url_for('static', filename='image/logo1.jpg') }}"alt="Logo Imigrasi" class="sidebar-logo">
+
+        <div class="title">
+            Kantor Imigrasi <br> Chatbot
+        </div>
+
+        <a href="{{ url_for('home') }}"class="sidebar-button">
+            ← Kembali ke Chatbot
+        </a>
+
+        <a href="{{ url_for('admin_logout') }}"class="logout-link">
+            Logout
+        </a>
+
+    </aside>
+
+    <!-- MAIN CONTENT -->
+    <main class="main admin-main">
+
+        <div class="admin-container">
+
+            <h1>Kelola Knowledge Base</h1>
+
+            <p class="subtitle">
+                Upload dokumen PDF baru untuk ditambahkan ke basis pengetahuan chatbot.
+            </p>
+
+            <!-- FLASH MESSAGE -->
+            {% with messages = get_flashed_messages() %}
+                {% if messages %}
+                    <div class="flash-messages">
+
+                        {% for message in messages %}
+                            <div class="flash-message">
+                                {{ message }}
+                            </div>
+                        {% endfor %}
+
+                    </div>
+                {% endif %}
+            {% endwith %}
+
+            <!-- UPLOAD FORM -->
+            <form id="uploadForm" method="POST" action="{{ url_for('admin_upload_dokumen') }}" enctype="multipart/form-data" class="upload-form" >
+                <label for="document">
+                    File PDF
+                </label>
+
+                <input type="file" id="document" name="document" accept=".pdf" required>
+
+                <button type="submit" id="uploadButton">
+                    Upload &amp; Ingest ke Knowledge Base
+                </button>
+            </form>
+
+            <div id="ingestLoading" class="ingest-loading">
+                <div class="ingest-loading-box">
+
+                    <lottie-player
+                        src="https://assets10.lottiefiles.com/packages/lf20_usmfx6bp.json"
+                        background="transparent"
+                        speed="1"
+                        loop
+                        autoplay>
+                    </lottie-player>
+
+                    <h3>Sedang memproses dokumen...</h3>
+
+                    <p>
+                        PDF sedang diproses dan dimasukkan ke Knowledge Base.
+                    </p>
+
+                    <span>
+                        Mohon tunggu, jangan tutup halaman ini.
+                    </span>
+
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+</div>
+
+<script src="{{ url_for('static', filename='js/admin.js') }}"></script>
+
+</body>
+
+
+</html>

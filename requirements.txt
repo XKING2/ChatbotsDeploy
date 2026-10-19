@@ -1,0 +1,31 @@
+# ===== Vector DB, LLM & embedding =====
+chromadb>=1.0.0
+google-genai>=1.20.0
+python-dotenv>=1.0.1
+PyMuPDF>=1.26.0
+tqdm>=4.67.0
+numpy>=2.1.0
+
+# ===== Bahasa & fuzzy matching =====
+langdetect
+lingua-language-detector>=2.0.2
+rapidfuzz>=3.14.5
+
+# ===== Evaluasi (RAGAS) & LangChain =====
+ragas>=0.4.3
+langchain>=1.0.0
+langchain-community>=0.3.0
+langchain-core>=1.0.0
+langchain-google-genai>=4.0.0
+
+# ===== Data =====
+datasets>=4.0.0
+pandas>=2.2.0
+openpyxl>=3.1.5
+
+# ===== Web app =====
+Flask==3.0.3
+flask-login>=0.6.3
+Flask-SQLAlchemy==3.1.1
+PyMySQL==1.1.1
+gunicorn>=22.0.0

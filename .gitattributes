@@ -1,0 +1,2 @@
+# Wajib: file shell harus LF, kalau CRLF (Windows) start.sh gagal jalan di Linux
+*.sh text eol=lf
