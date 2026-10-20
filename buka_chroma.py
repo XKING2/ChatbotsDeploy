@@ -1,51 +1,58 @@
-import streamlit as st
-import chromadb
-import os
 
-# Konfigurasi halaman
-st.set_page_config(page_title="ChromaDB Local Viewer", layout="wide")
-st.title("🔎 ChromaDB Local Viewer")
+from database.chroma_db import (
+    entity_collection,
+    chunk_collection,
+)
 
-# Sesuai dengan konfigurasi PATH Anda
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-CHROMA_DB_PATH = os.path.join(BASE_DIR, "data", "chroma_db")
+print("=== STATISTIK ===")
+print("Entity collection:", entity_collection.count())
+print("Chunk collection:", chunk_collection.count())
 
-st.sidebar.info(f"📁 Memuat database dari:\n`{CHROMA_DB_PATH}`")
+print("\n=== CONTOH ITEM ENTITY ===")
+data = entity_collection.get(
+    limit=10,
+    include=["documents", "metadatas"]
+)
 
-try:
-    # Hubungkan ke database lokal Anda
-    client = chromadb.PersistentClient(path=CHROMA_DB_PATH)
-    
-    # Ambil daftar semua koleksi
-    collections = client.list_collections()
-    collection_names = [col.name for col in collections]
-    
-    if not collection_names:
-        st.warning("Database terhubung, tetapi belum ada Koleksi (Collection) yang dibuat.")
-    else:
-        # Pilih Koleksi lewat Sidebar
-        selected_koleksi = st.sidebar.selectbox("Pilih Koleksi:", collection_names)
-        
-        # Ambil data dari koleksi terpilih
-        collection = client.get_collection(name=selected_koleksi)
-        data = collection.get() # Mengambil semua isi dokumen
-        
-        # Tampilkan Jumlah Data keseluruhan
-        st.metric(label="Total Dokumen", value=len(data['ids']))
-        
-        # Susun data ke dalam tabel agar rapi
-        list_data = []
-        for i in range(len(data['ids'])):
-            row = {
-                "ID": data['ids'][i],
-                "Isi Dokumen (Text Chunk)": data['documents'][i] if data['documents'] else "Tidak ada teks",
-                "Metadata": str(data['metadatas'][i]) if data['metadatas'] else "{}"
-            }
-            list_data.append(row)
-            
-        # Tampilkan secara visual di browser
-        st.subheader(f"Daftar Isi Koleksi: `{selected_koleksi}`")
-        st.dataframe(list_data, use_container_width=True)
+for doc_id, document, metadata in zip(
+    data["ids"],
+    data["documents"],
+    data["metadatas"],
+):
+    print({
+        "id": doc_id,
+        "document": document,
+        "type": metadata.get("type"),
+        "entity": metadata.get("entity"),
+        "alias": metadata.get("alias"),
+        "subtopic": metadata.get("subtopic"),
+        "description": metadata.get("description"),
+        "examples": metadata.get("examples"),
+    })
 
-except Exception as e:
-    st.error(f"Gagal menghubungkan ke ChromaDB: {e}")
+print("\n=== JUMLAH TIPE ITEM ===")
+for item_type in ("entity", "alias", "subtopic"):
+    result = entity_collection.get(
+        where={"type": item_type},
+        include=["metadatas"],
+    )
+    print(f"{item_type}: {len(result['ids'])}")
+
+print("\n=== CONTOH ALIAS ===")
+aliases = entity_collection.get(
+    where={"type": "alias"},
+    include=["documents", "metadatas"],
+    limit=10,
+)
+
+for doc_id, document, metadata in zip(
+    aliases["ids"],
+    aliases["documents"],
+    aliases["metadatas"],
+):
+    print({
+        "id": doc_id,
+        "document": document,
+        "alias": metadata.get("alias"),
+        "entity_id": metadata.get("entity_id"),
+    })

@@ -7,110 +7,61 @@ def collect_entities(sections):
     for section in sections:
         entity = (section.get("entity") or "").strip()
         entity_id = (section.get("entity_id") or "").strip()
-
         if not entity or not entity_id:
             continue
 
-        if entity_id not in entities:
-            entities[entity_id] = {
-                "entity_id": entity_id,
-                "entity": entity,
-                "subtopics": {}
-            }
+        item = entities.setdefault(entity_id, {
+            "entity_id": entity_id,
+            "entity": entity,
+            "subtopics": {}
+        })
 
         subtopic = (section.get("subtopic") or "").strip()
         subtopic_id = (section.get("subtopic_id") or "").strip()
-
-        if not subtopic or not subtopic_id:
-            continue
-
-        if subtopic_id not in entities[entity_id]["subtopics"]:
-            entities[entity_id]["subtopics"][subtopic_id] = {
+        if subtopic and subtopic_id:
+            item["subtopics"].setdefault(subtopic_id, {
                 "subtopic_id": subtopic_id,
                 "subtopic": subtopic
-            }
+            })
 
     return list(entities.values())
 
 
-def build_entity_embedding_text(
-    entity,
-    aliases=None,
-    subtopics=None
-):
+def build_entity_embedding_text(entity, aliases=None, subtopics=None):
     entity = (entity or "").strip()
+    parts = ["Layanan", entity]
 
-    parts = [
-        "Layanan",
-        entity
+    aliases = [
+        str(value).strip() for value in (aliases or [])
+        if str(value).strip()
     ]
-
     if aliases:
-        aliases = [
-            str(alias).strip()
-            for alias in aliases
-            if str(alias).strip()
-        ]
+        parts.extend(["Nama lain", ", ".join(aliases)])
 
-        if aliases:
-            parts.extend([
-                "Nama lain",
-                ", ".join(aliases)
-            ])
-
+    subtopics = [
+        str(value).strip() for value in (subtopics or [])
+        if str(value).strip()
+    ]
     if subtopics:
-        subtopics = [
-            str(subtopic).strip()
-            for subtopic in subtopics
-            if str(subtopic).strip()
-        ]
-
-        if subtopics:
-            parts.extend([
-                "Topik layanan",
-                ", ".join(subtopics)
-            ])
+        parts.extend(["Topik layanan", ", ".join(subtopics)])
 
     return "\n\n".join(parts).strip()
 
 
-def build_subtopic_embedding_text(
-    entity,
-    subtopic,
-    description=None,
-    examples=None
-):
+def build_subtopic_embedding_text(entity, subtopic, description=None, examples=None):
     entity = (entity or "").strip()
     subtopic = (subtopic or "").strip()
     description = (description or "").strip()
 
     if not isinstance(examples, list):
         examples = [examples] if examples else []
+    examples = [str(value).strip() for value in examples if str(value).strip()]
 
-    examples = [
-        str(example).strip()
-        for example in examples
-        if str(example).strip()
-    ]
-
-    parts = [
-        "Layanan",
-        entity,
-        "Subtopic",
-        subtopic
-    ]
-
+    parts = ["Layanan", entity, "Subtopic", subtopic]
     if description:
-        parts.extend([
-            "Deskripsi",
-            description
-        ])
-
+        parts.extend(["Deskripsi", description])
     if examples:
-        parts.extend([
-            "Contoh pertanyaan",
-            " | ".join(examples)
-        ])
+        parts.extend(["Contoh pertanyaan", " | ".join(examples)])
 
     return "\n\n".join(parts).strip()
 

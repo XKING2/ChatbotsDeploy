@@ -1,8 +1,27 @@
+
 import json
 import os
 
 from config import KNOWLEDGE_INDEX_PATH
 from database.hashing import compute_hash
+from database.entity_builder import (
+    build_entity_embedding_text,
+    build_subtopic_embedding_text,
+)
+from database.heading_prompt import (
+    build_heading_description,
+    build_heading_examples,
+)
+
+try:
+    from database.chroma_db import get_aliases
+except ImportError:
+    get_aliases = None
+
+try:
+    from database.alias_generator import generate_subtopic_aliases_batch
+except ImportError:
+    generate_subtopic_aliases_batch = None
 
 
 def load_existing_index():
@@ -16,30 +35,19 @@ def load_existing_index():
         if not isinstance(data, dict):
             return {"entities": []}
 
-        entities = data.get("entities")
-
-        if not isinstance(entities, list):
+        if not isinstance(data.get("entities"), list):
             data["entities"] = []
 
         return data
 
-    except json.JSONDecodeError as exc:
-        print(
-            f"knowledge_index.json rusak/tidak valid ({exc}), "
-            "akan dibangun ulang dari nol."
-        )
+    except (json.JSONDecodeError, OSError) as exc:
+        print(f"knowledge_index.json tidak dapat dibaca ({exc}).")
 
         backup_path = KNOWLEDGE_INDEX_PATH + ".corrupted"
 
         try:
-            os.replace(
-                KNOWLEDGE_INDEX_PATH,
-                backup_path
-            )
-            print(
-                f"File rusak dipindahkan ke: "
-                f"{backup_path}"
-            )
+            os.replace(KNOWLEDGE_INDEX_PATH, backup_path)
+            print(f"File lama dipindahkan ke: {backup_path}")
         except OSError:
             pass
 
@@ -47,381 +55,377 @@ def load_existing_index():
 
 
 def _index_chunks_by_subtopic(chunks):
-    by_subtopic = {}
+    result = {}
 
-    for chunk in chunks:
-        subtopic_id = (
-            chunk.get("subtopic_id") or ""
-        ).strip()
+    for chunk in chunks or []:
+        sid = (chunk.get("subtopic_id") or "").strip()
+        cid = (chunk.get("content_chunk_id") or "").strip()
 
-        if not subtopic_id:
+        if not sid or not cid:
             continue
 
-        content_chunk_id = (
-            chunk.get("content_chunk_id") or ""
-        ).strip()
-
-        if not content_chunk_id:
-            continue
-
-        by_subtopic.setdefault(
-            subtopic_id,
-            []
-        ).append({
-            "content_chunk_id": content_chunk_id,
-            "content_hash": chunk.get(
-                "content_hash"
-            ),
-            "chunk_index": chunk.get(
-                "chunk_index"
-            ),
-            "total_chunks": chunk.get(
-                "total_chunks"
-            )
+        result.setdefault(sid, []).append({
+            "content_chunk_id": cid,
+            "content_hash": chunk.get("content_hash"),
+            "chunk_index": chunk.get("chunk_index"),
+            "total_chunks": chunk.get("total_chunks"),
         })
 
-    for subtopic_id in by_subtopic:
-        by_subtopic[subtopic_id].sort(
-            key=lambda item: (
-                item.get("chunk_index") or 0
-            )
-        )
-
-    return by_subtopic
-
-
-def _build_subtopics_for_entity(
-    entity,
-    sections,
-    chunks_by_subtopic,
-    old_entry=None
-):
-    subtopics = {}
-
-    for section in sections:
-        if section.get("entity") != entity:
-            continue
-
-        subtopic = (
-            section.get("subtopic") or ""
-        ).strip()
-
-        subtopic_id = (
-            section.get("subtopic_id") or ""
-        ).strip()
-
-        if not subtopic or not subtopic_id:
-            continue
-
-        if subtopic_id not in subtopics:
-            subtopics[subtopic_id] = {
-                "subtopic_id": subtopic_id,
-                "subtopic": subtopic,
-                "_content_parts": []
-            }
-
-        content = (
-            section.get("content") or ""
-        ).strip()
-
-        if content:
-            subtopics[
-                subtopic_id
-            ]["_content_parts"].append(content)
-
-    old_subtopics_by_id = {}
-
-    if old_entry:
-        old_subtopics = old_entry.get(
-            "subtopics",
-            []
-        )
-
-        if isinstance(old_subtopics, list):
-            for subtopic in old_subtopics:
-                if not isinstance(subtopic, dict):
-                    continue
-
-                subtopic_id = (
-                    subtopic.get(
-                        "subtopic_id"
-                    ) or ""
-                ).strip()
-
-                if subtopic_id:
-                    old_subtopics_by_id[
-                        subtopic_id
-                    ] = subtopic
-
-    result = []
-
-    for subtopic_id, entry in subtopics.items():
-        content = " ".join(
-            entry["_content_parts"]
-        ).strip()
-
-        subtopic_hash = compute_hash(
-            content
-        )
-
-        result.append({
-            "subtopic_id": subtopic_id,
-            "subtopic": entry["subtopic"],
-            "subtopic_hash": subtopic_hash,
-            "content_chunks": chunks_by_subtopic.get(
-                subtopic_id,
-                []
-            )
-        })
-
-    current_subtopic_ids = set(
-        subtopics.keys()
-    )
-
-    for subtopic_id, old_subtopic in (
-        old_subtopics_by_id.items()
-    ):
-        if subtopic_id in current_subtopic_ids:
-            continue
-
-        result.append(old_subtopic)
-
-    result.sort(
-        key=lambda item: (
-            item.get("subtopic") or ""
-        ).lower()
-    )
+    for values in result.values():
+        values.sort(key=lambda x: x.get("chunk_index") or 0)
 
     return result
 
 
-def _build_aliases_for_entity(
-    entity,
-    entity_id,
-    old_entry=None
-):
-    if not old_entry:
-        return []
+def _clean_aliases(aliases, original_name=None):
+    """Bersihkan alias, hilangkan duplikat, dan kecualikan nama aslinya."""
+    cleaned = []
+    seen = set()
 
-    aliases = old_entry.get(
-        "aliases",
-        []
-    )
+    if original_name:
+        seen.add(original_name.strip().casefold())
 
     if not isinstance(aliases, list):
+        return cleaned
+
+    for alias in aliases:
+        if not isinstance(alias, str):
+            continue
+
+        alias = alias.strip()
+        key = alias.casefold()
+
+        if alias and key not in seen:
+            cleaned.append(alias)
+            seen.add(key)
+
+    return cleaned
+
+
+def _aliases_from_chroma(entity_id):
+    if get_aliases is None:
         return []
 
-    return aliases
+    try:
+        data = get_aliases(entity_id) or {}
+        metadatas = data.get("metadatas") or []
+
+        aliases = []
+
+        for metadata in metadatas:
+            if not isinstance(metadata, dict):
+                continue
+
+            value = (metadata.get("alias") or "").strip()
+
+            if value:
+                aliases.append(value)
+
+        return _clean_aliases(aliases)
+
+    except Exception as exc:
+        print(
+            f"Peringatan: gagal membaca alias Chroma "
+            f"untuk {entity_id}: {exc}"
+        )
+        return []
+
+
+def _merge_aliases(entity_id, old_entry=None):
+    """Prioritaskan alias Chroma; gunakan JSON lama jika tidak tersedia."""
+    aliases = _aliases_from_chroma(entity_id)
+
+    if not aliases and isinstance(old_entry, dict):
+        aliases = old_entry.get("aliases", [])
+
+    entity_name = (
+        old_entry.get("entity")
+        if isinstance(old_entry, dict)
+        else None
+    )
+
+    return _clean_aliases(aliases, entity_name)
 
 
 def _build_entities_from_sections(sections):
     entities = {}
 
     for section in sections:
-        entity = (
-            section.get("entity") or ""
-        ).strip()
+        entity = (section.get("entity") or "").strip()
+        entity_id = (section.get("entity_id") or "").strip()
 
-        entity_id = (
-            section.get("entity_id") or ""
-        ).strip()
-
-        if not entity or not entity_id:
-            continue
-
-        entities[entity_id] = {
-            "entity_id": entity_id,
-            "entity": entity
-        }
+        if entity and entity_id:
+            entities[entity_id] = {
+                "entity_id": entity_id,
+                "entity": entity,
+            }
 
     return entities
 
 
-def _build_entity_hash(entity, subtopics):
-    entity_hash_source = "\n".join([
-        entity,
-        *[
-            subtopic.get(
-                "subtopic",
-                ""
-            )
-            for subtopic in subtopics
-        ]
-    ])
+def _generate_subtopic_aliases(entity_id, entity, grouped):
+    """
+    Hasil:
+    {
+        "entity_id::subtopic_id": ["alias 1", "alias 2"]
+    }
+    """
+    if not grouped or generate_subtopic_aliases_batch is None:
+        return {}
 
-    return compute_hash(
-        entity_hash_source
+    alias_inputs = [
+        {
+            "entity_id": entity_id,
+            "entity": entity,
+            "subtopic_id": sid,
+            "subtopic": item["subtopic"],
+        }
+        for sid, item in grouped.items()
+    ]
+
+    try:
+        result = generate_subtopic_aliases_batch(alias_inputs)
+
+        return result if isinstance(result, dict) else {}
+
+    except Exception as exc:
+        print(
+            f"[IndexBuilder] Gagal generate alias subtopic "
+            f"untuk entity '{entity}': {exc}"
+        )
+        return {}
+
+
+def _build_subtopics_for_entity(
+    entity_id,
+    entity,
+    sections,
+    chunks_by_subtopic,
+    old_entry=None,
+):
+    old_by_id = {}
+
+    if isinstance(old_entry, dict):
+        for item in old_entry.get("subtopics", []) or []:
+            if isinstance(item, dict) and item.get("subtopic_id"):
+                old_by_id[item["subtopic_id"]] = item
+
+    grouped = {}
+
+    for section in sections:
+        if (section.get("entity") or "").strip() != entity:
+            continue
+
+        name = (section.get("subtopic") or "").strip()
+        sid = (section.get("subtopic_id") or "").strip()
+
+        if not name or not sid:
+            continue
+
+        item = grouped.setdefault(sid, {
+            "subtopic_id": sid,
+            "subtopic": name,
+            "_content_parts": [],
+        })
+
+        content = (section.get("content") or "").strip()
+
+        if content:
+            item["_content_parts"].append(content)
+
+    # Generate alias untuk subtopic entity ini.
+    generated_aliases = _generate_subtopic_aliases(
+        entity_id=entity_id,
+        entity=entity,
+        grouped=grouped,
     )
 
+    results = []
 
-def build_knowledge_index(
-    sections,
-    chunks
-):
-    if not sections:
-        print(
-            "Tidak ada section. "
-            "Knowledge index tidak diubah."
+    for sid, item in grouped.items():
+        old = old_by_id.get(sid, {})
+        subtopic_name = item["subtopic"]
+
+        alias_key = f"{entity_id}::{sid}"
+        new_aliases = generated_aliases.get(alias_key, [])
+
+        # Jika alias baru kosong, pertahankan alias lama.
+        if not new_aliases:
+            new_aliases = old.get("aliases", [])
+
+        clean_aliases = _clean_aliases(
+            new_aliases,
+            original_name=subtopic_name,
         )
+
+        description = build_heading_description(
+            subtopic_name,
+            entity,
+        )
+
+        examples = build_heading_examples(
+            subtopic_name,
+            entity,
+        )
+
+        subtopic_text = build_subtopic_embedding_text(
+            entity=entity,
+            subtopic=subtopic_name,
+            description=description,
+            examples=examples,
+        )
+
+        content = " ".join(item["_content_parts"]).strip()
+
+        results.append({
+            "subtopic_id": sid,
+            "subtopic": subtopic_name,
+            "aliases": clean_aliases,
+            "subtopic_hash": compute_hash(content),
+            "description": description,
+            "examples": examples,
+            "embedding_text": subtopic_text,
+            "content_chunks": chunks_by_subtopic.get(sid, []),
+        })
+
+        print(
+            f"  SUBTOPIC: {subtopic_name} "
+            f"| aliases={len(clean_aliases)}"
+        )
+
+    # Pertahankan subtopic lama yang tidak ada di section saat ini.
+    current_ids = {item["subtopic_id"] for item in results}
+
+    for sid, old in old_by_id.items():
+        if sid not in current_ids:
+            results.append(old)
+            print(
+                f"  SUBTOPIC LAMA DIPERTAHANKAN: "
+                f"{old.get('subtopic', sid)}"
+            )
+
+    results.sort(
+        key=lambda x: (x.get("subtopic") or "").casefold()
+    )
+
+    return results
+
+
+def build_knowledge_index(sections, chunks):
+    if not sections:
+        print("Tidak ada section. Knowledge index tidak diubah.")
         return
 
     existing = load_existing_index()
 
-    existing_entities_by_id = {
-        entity.get("entity_id"): entity
-        for entity in existing.get(
-            "entities",
-            []
-        )
-        if isinstance(entity, dict)
-        and entity.get("entity_id")
+    old_by_id = {
+        item.get("entity_id"): item
+        for item in existing.get("entities", [])
+        if isinstance(item, dict) and item.get("entity_id")
     }
 
-    entities = _build_entities_from_sections(
-        sections
-    )
-
-    chunks_by_subtopic = (
-        _index_chunks_by_subtopic(chunks)
-    )
-
-    print("\n" + "=" * 70)
-    print("MEMBANGUN KNOWLEDGE INDEX")
-    print("=" * 70)
+    entities = _build_entities_from_sections(sections)
+    chunks_by_subtopic = _index_chunks_by_subtopic(chunks)
 
     entity_index = []
 
-    current_entity_ids = set(
-        entities.keys()
-    )
+    for entity_id, data in entities.items():
+        entity = data["entity"]
+        old = old_by_id.get(entity_id)
 
-    for entity_id, entity_data in (
-        entities.items()
-    ):
-        entity = entity_data["entity"]
+        aliases = _merge_aliases(entity_id, old)
 
-        old_entry = (
-            existing_entities_by_id.get(
-                entity_id
-            )
+        subtopics = _build_subtopics_for_entity(
+            entity_id=entity_id,
+            entity=entity,
+            sections=sections,
+            chunks_by_subtopic=chunks_by_subtopic,
+            old_entry=old,
         )
 
-        subtopics = (
-            _build_subtopics_for_entity(
-                entity=entity,
-                sections=sections,
-                chunks_by_subtopic=(
-                    chunks_by_subtopic
-                ),
-                old_entry=old_entry
-            )
-        )
+        subtopic_names = [
+            item.get("subtopic", "")
+            for item in subtopics
+        ]
 
-        aliases = (
-            _build_aliases_for_entity(
-                entity=entity,
-                entity_id=entity_id,
-                old_entry=old_entry
-            )
-        )
-
-        entity_hash = _build_entity_hash(
+        entity_text = build_entity_embedding_text(
             entity,
-            subtopics
+            aliases=aliases,
+            subtopics=subtopic_names,
         )
 
         entry = {
             "entity_id": entity_id,
             "entity": entity,
-            "entity_hash": entity_hash,
+            "entity_hash": compute_hash(entity_text),
             "aliases": aliases,
-            "subtopics": subtopics
+            "aliases_generated": bool(aliases),
+            "embedding_text": entity_text,
+            "subtopics": subtopics,
         }
 
         entity_index.append(entry)
 
-        print(
-            f"\nENTITY: {entity}"
-        )
-        print(
-            f"  ID       : {entity_id}"
-        )
-        print(
-            f"  Alias    : {len(aliases)}"
-        )
-        print(
-            f"  Subtopic : {len(subtopics)}"
+        alias_total = sum(
+            len(item.get("aliases", []))
+            for item in subtopics
         )
 
-        for subtopic in subtopics:
+        print(
+            f"ENTITY: {entity} "
+            f"| aliases={len(aliases)} "
+            f"| subtopics={len(subtopics)} "
+            f"| subtopic_aliases={alias_total}"
+        )
+
+    # Pertahankan entity lama yang tidak ada dalam batch section.
+    current_ids = set(entities)
+
+    for entity_id, old in old_by_id.items():
+        if entity_id not in current_ids:
+            entity_index.append(old)
             print(
-                f"    - {subtopic['subtopic']} "
-                f"({len(subtopic.get('content_chunks', []))} chunk)"
+                f"ENTITY LAMA DIPERTAHANKAN: "
+                f"{old.get('entity', entity_id)}"
             )
 
-    untouched_entity_ids = (
-        set(existing_entities_by_id.keys())
-        - current_entity_ids
-    )
-
-    for entity_id in untouched_entity_ids:
-        old_entry = (
-            existing_entities_by_id[
-                entity_id
-            ]
-        )
-
-        entity_index.append(
-            old_entry
-        )
-
-        print(
-            f"\nENTITY LAMA DIPERTAHANKAN: "
-            f"{old_entry.get('entity', entity_id)}"
-        )
-
     entity_index.sort(
-        key=lambda item: (
-            item.get("entity", "")
-        ).lower()
+        key=lambda x: (x.get("entity") or "").casefold()
     )
 
-    knowledge = {
-        "entities": entity_index
-    }
+    knowledge = {"entities": entity_index}
 
-    tmp_path = (
-        KNOWLEDGE_INDEX_PATH
-        + ".tmp"
-    )
+    directory = os.path.dirname(KNOWLEDGE_INDEX_PATH)
 
-    with open(
-        tmp_path,
-        "w",
-        encoding="utf-8"
-    ) as f:
+    if directory:
+        os.makedirs(directory, exist_ok=True)
+
+    tmp_path = KNOWLEDGE_INDEX_PATH + ".tmp"
+
+    with open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(
             knowledge,
             f,
             ensure_ascii=False,
-            indent=4
+            indent=4,
         )
 
-    os.replace(
-        tmp_path,
-        KNOWLEDGE_INDEX_PATH
+    os.replace(tmp_path, KNOWLEDGE_INDEX_PATH)
+
+    total_subtopics = sum(
+        len(item.get("subtopics", []))
+        for item in entity_index
     )
 
-    print("\n" + "=" * 70)
-    print(
-        f"Jumlah Entity total : "
-        f"{len(entity_index)}"
+    total_subtopic_aliases = sum(
+        len(subtopic.get("aliases", []))
+        for item in entity_index
+        for subtopic in item.get("subtopics", [])
     )
-    print(
-        "Knowledge Index berhasil "
-        "dibuat/diperbarui"
-    )
-    print(
-        KNOWLEDGE_INDEX_PATH
-    )
+
+    print("=" * 70)
+    print(f"Jumlah entity: {len(entity_index)}")
+    print(f"Jumlah subtopic: {total_subtopics}")
+    print(f"Jumlah alias subtopic: {total_subtopic_aliases}")
+    print(f"Knowledge index tersimpan: {KNOWLEDGE_INDEX_PATH}")
     print("=" * 70)
