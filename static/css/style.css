@@ -1,343 +1,699 @@
-body {
-    margin: 0;
-    font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
-    background: #fafafa;
-    -webkit-font-smoothing: antialiased;
+/* =====================================================================
+   Kantor Imigrasi Chatbot — style.css (mobile-first, responsive)
+
+   Breakpoint (pakai em supaya ikut membesar saat ukuran teks browser
+   diperbesar; 1em = 16px pada pengaturan standar):
+
+     < 56.25em (900px)  : sidebar = DRAWER overlay dari kiri, header atas
+                          berisi tombol menu. Chat memakai seluruh layar.
+     >= 56.25em (900px) : sidebar PERMANEN di kiri, chat di kanan.
+
+     37.5em (600px)     : penyesuaian ukuran (gutter, avatar, tombol kirim)
+
+   Status drawer dikendalikan script.js lewat class `.sidebar-open`
+   pada `.app`. Status "belum ada pesan" lewat class `.is-empty` pada
+   `.main`.
+   ===================================================================== */
+
+:root {
+    color-scheme: light;
+
+    /* Aksen (isi tombol, bubble pengguna) — sama di kedua tema */
+    --purple: #6544d8;
+    --purple-hover: #5334c0;
+
+    /* Teks / garis berwarna ungu — dibedakan per tema supaya kontrasnya cukup */
+    --heading: #6544d8;
+    --purple-ink: #5d38d6;
+    --pill-border: #6544d8;
+    --focus: #6544d8;
+    --focus-ring: rgba(101, 68, 216, 0.35);
+
+    --purple-tint: #e0d7fb;
+    --purple-soft: #e9e3ff;
+    --purple-disabled: #b3a4ea;
+    --scroll-thumb: #d3c9f7;
+
+    --text: #222;
+    --text-soft: #444;
+    --text-muted: #555;
+    --placeholder: #757575;
+    --surface: #fff;
+    --page: #fafafa;
+    --line: #eee;
+
+    --code-bg: rgba(0, 0, 0, 0.06);
+    --table-border: rgba(0, 0, 0, 0.12);
+    --typing-dot: #aaa;
+    --shadow-input: 0 5px 20px rgba(0, 0, 0, 0.15);
+    --shadow-bubble: 0 3px 10px rgba(0, 0, 0, 0.08);
+
+    --gutter: 0.75rem;
+    --sidebar-width: 16.25rem;
+    --header-height: 3.5rem;
+    --drawer-speed: 0.25s;
+
+    /* Tinggi aplikasi. script.js menimpa nilai ini dengan tinggi viewport
+       visual (supaya kolom input tidak tertutup keyboard HP). */
+    --app-height: 100vh;
 }
 
-/* CONTAINER UTAMA */
-.container {
+/* ---- Tema gelap: dipasang lewat atribut data-theme="dark" pada <html>
+        (diatur script di <head> + tombol ganti tema) ---- */
+:root[data-theme="dark"] {
+    color-scheme: dark;
+
+    --heading: #b6a2ff;
+    --purple-ink: #cdbfff;
+    --pill-border: #8f74f2;
+    --focus: #b6a2ff;
+    --focus-ring: rgba(182, 162, 255, 0.45);
+
+    --purple-tint: #3a3170;
+    --purple-soft: #31295a;
+    --purple-disabled: #4f4585;
+    --scroll-thumb: #4a4270;
+
+    --text: #ecebf3;
+    --text-soft: #cfcce0;
+    --text-muted: #a9a5bd;
+    --placeholder: #8f8ba5;
+    --surface: #211e30;
+    --page: #151320;
+    --line: #2e2a44;
+
+    --code-bg: rgba(255, 255, 255, 0.09);
+    --table-border: rgba(255, 255, 255, 0.18);
+    --typing-dot: #8f8ba5;
+    --shadow-input: 0 5px 20px rgba(0, 0, 0, 0.5);
+    --shadow-bubble: 0 3px 10px rgba(0, 0, 0, 0.4);
+}
+
+@supports (height: 100dvh) {
+    :root {
+        --app-height: 100dvh;
+    }
+}
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+html,
+body {
+    height: 100%;
+    margin: 0;
+    overflow: hidden;
+    overscroll-behavior: none;
+}
+
+body {
+    font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
+    background: var(--page);
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+}
+
+button,
+input {
+    font-family: inherit;
+}
+
+button {
+    -webkit-tap-highlight-color: transparent;
+}
+
+:focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+}
+
+.hidden {
+    display: none !important;
+}
+
+/* =====================================================================
+   KERANGKA APLIKASI
+   ===================================================================== */
+
+.app {
     display: flex;
     width: 100%;
-    height: 100vh;
+    height: var(--app-height);
     overflow: hidden;
 }
 
+/* =====================================================================
+   SIDEBAR — default (layar sempit): drawer yang menumpuk di atas chat
+   ===================================================================== */
+
+.sidebar-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+
+    background: rgba(20, 14, 45, 0.5);
+
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity var(--drawer-speed) ease,
+                visibility 0s linear var(--drawer-speed);
+}
+
 .sidebar {
-    width: 250px;
-    height: 100vh;
-    flex-shrink: 0;
-    box-sizing: border-box;
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 30;
+
+    display: flex;
+    flex-direction: column;
+
+    width: min(85vw, 20rem);
+    padding: 1rem;
+    padding-top: max(1rem, env(safe-area-inset-top));
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+    padding-left: max(1rem, env(safe-area-inset-left));
+
+    background: var(--surface);
+    border-right: 1px solid var(--line);
+
+    overflow: hidden;
+
+    /* Tertutup: digeser keluar layar DAN visibility hidden, supaya isi
+       sidebar tidak bisa difokus lewat keyboard / dibaca screen reader */
+    transform: translateX(-100%);
+    visibility: hidden;
+    transition: transform var(--drawer-speed) ease,
+                visibility 0s linear var(--drawer-speed);
+}
+
+.app.sidebar-open .sidebar-overlay {
+    opacity: 1;
+    visibility: visible;
+    transition-delay: 0s;
+}
+
+.app.sidebar-open .sidebar {
+    transform: none;
+    visibility: visible;
+    box-shadow: 0 0 2.5rem rgba(0, 0, 0, 0.25);
+    transition-delay: 0s;
+}
+
+.sidebar-header {
+    position: relative;
 
     display: flex;
     flex-direction: column;
     align-items: center;
 
-    padding: 20px;
-    background: white;
-    border-right: 1px solid #eee;
+    flex-shrink: 0;
+}
 
-    overflow: hidden;
+.sidebar-close {
+    position: absolute;
+    top: -0.25rem;
+    right: -0.25rem;
 }
 
 .sidebar-logo {
-    width: 80px;
+    width: 4.5rem;
     height: auto;
-    margin-bottom: 15px;
+    margin-bottom: 0.75rem;
     border-radius: 8px;
 }
 
 .title {
+    margin-bottom: 1.25rem;
+
     text-align: center;
-    margin-bottom: 20px;
-    font-size: 18px;
+    font-size: 1.125rem;
     font-weight: 600;
     line-height: 1.4;
+}
+
+.sidebar-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+
+    flex-shrink: 0;
 }
 
 .sidebar-button {
     width: 100%;
-    box-sizing: border-box;
-
-    padding: 12px 14px;
-    margin-bottom: 10px;
+    min-height: 2.75rem;
+    padding: 0.75rem 0.875rem;
 
     border: none;
-    background: #eee;
     border-radius: 12px;
+    background: var(--line);
+    color: var(--text-soft);
+
+    font-size: 1rem;
+    text-align: center;
 
     cursor: pointer;
-
-    font-size: 15px;
-    font-family: inherit;
-    text-align: center;
-    text-decoration: none;
-
-    color: #444;
-
-    transition: background .2s, color .2s;
+    transition: background 0.2s, color 0.2s;
 }
 
-.sidebar-button:hover {
-    background: #e0d7fb;
-    color: #5d38d6;
-}
+.history-title {
+    flex-shrink: 0;
 
-.logout-link {
-    margin-top: auto;
+    margin: 1.5rem 0 0.5rem;
+    padding: 0 0.25rem;
 
-    width: 100%;
-    box-sizing: border-box;
-
-    padding: 12px;
-
-    text-align: center;
-
-    font-size: 14px;
-    color: #999;
-
-    text-decoration: none;
-
-    border-top: 1px solid #eee;
-
-    transition: color .2s;
-}
-
-.logout-link:hover {
-    color: #b3261e;
-}
-
-/* JUDUL */
-.title {
-    text-align: center;
-    margin-bottom: 20px;
-    font-size: 18px;
+    font-size: 0.875rem;
     font-weight: 600;
-    line-height: 1.4;
+    color: var(--text-muted);
 }
 
-/* BUTTON SIDEBAR */
-.sidebar button {
-    width: 100%;
-    padding: 14px;
-    margin-bottom: 15px;
-
-    border: none;
-    background: #eee;
-    border-radius: 12px;
-
-    cursor: pointer;
-    font-size: 16px;
-    font-family: inherit;
-
-    transition: background .2s, color .2s;
-}
-
-.sidebar button:hover {
-    background: #e0d7fb;
-    color: #5d38d6;
-}
-
-/* MAIN */
-.main {
-    flex: 1;
-    min-width: 0;
-    height: 100vh;
-    box-sizing: border-box;
+/* Daftar riwayat mengambil sisa tinggi sidebar dan scroll sendiri */
+.history-list {
+    flex: 1 1 auto;
+    min-height: 0;
 
     display: flex;
     flex-direction: column;
-    align-items: center;
-    justify-content: flex-start;
+    gap: 0.25rem;
 
-    padding-top: 30px;
-    padding-bottom: 28px;
-
-    overflow: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: var(--scroll-thumb) transparent;
 }
 
-/* Selama #chatArea masih kosong (belum ada pesan), seluruh grup
-   hero + rekomendasi + input di-tengah-kan secara vertikal di layar,
-   seperti tampilan awal Claude / ChatGPT sebelum chat dimulai */
-.main:has(#chatArea:empty) {
-    justify-content: center;
-    padding-top: 0;
-}
-
-/* Urutan visual: hero & suggestion di atas, chat area di tengah
-   (yang scroll), input-box didorong ke paling bawah layar —
-   pola yang sama seperti Claude / ChatGPT */
-#heroSection {
-    order: 1;
+.history-item {
     flex-shrink: 0;
-}
 
-#suggestionSection {
-    order: 2;
-    flex-shrink: 0;
-}
-
-#chatArea {
-    order: 3;
-}
-
-.input-box {
-    order: 4;
-    flex-shrink: 0;
-}
-
-/* HERO */
-.main h1 {
-    font-size: 44px;
-    color: #6544d8;
-    margin: 0;
-    text-align: center;
-    font-weight: 700;
-    letter-spacing: -0.5px;
-}
-
-.main h3 {
-    margin-top: 8px;
-    font-weight: 400;
-    color: #555;
-    font-size: 16px;
-    text-align: center;
-}
-
-/* INPUT */
-.input-box {
-    margin-top: 14px;
-
-    display: flex;
-
-    width: 60%;
-    max-width: 700px;
-
-    background: white;
-    border-radius: 15px;
-    overflow: hidden;
-
-    box-shadow: 0 5px 20px rgba(0,0,0,.15);
-
-    flex-shrink: 0;
-}
-
-.input-box input {
-    flex: 1;
-    min-width: 0;
-
-    padding: 18px;
+    width: 100%;
+    min-height: 2.75rem;
+    padding: 0.6875rem 0.75rem;
 
     border: none;
-    font-size: 16px;
-    font-family: inherit;
-    outline: none;
-}
+    border-radius: 10px;
+    background: transparent;
+    color: var(--text-soft);
 
-.input-box button {
-    width: 80px;
+    font-size: 0.875rem;
+    line-height: 1.4;
+    text-align: left;
 
-    background: #6544d8;
-    color: white;
-
-    border: none;
-
-    font-size: 24px;
     cursor: pointer;
 
-    transition: background .2s;
+    /* judul panjang dipotong dengan "..." */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+
+    transition: background 0.2s, color 0.2s;
 }
 
-.input-box button:hover {
-    background: #5334c0;
+.history-item.active {
+    background: var(--purple-soft);
+    color: var(--purple-ink);
+    font-weight: 500;
 }
 
-.input-box button:disabled {
-    background: #b3a4ea;
-    cursor: not-allowed;
+/* Footer sidebar: tombol ganti tema */
+.sidebar-footer {
+    flex-shrink: 0;
+
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+
+    border-top: 1px solid var(--line);
 }
 
-/* REKOMENDASI */
-.suggestion-title {
-    margin-top: 30px;
-
-    font-size: 15px;
-    font-weight: 600;
-    color: #555;
+.theme-toggle .icon-sun {
+    display: none;
 }
 
-.suggestions {
+:root[data-theme="dark"] .theme-toggle .icon-moon {
+    display: none;
+}
+
+:root[data-theme="dark"] .theme-toggle .icon-sun {
+    display: inline;
+}
+
+.sidebar-button.theme-toggle {
     display: flex;
-    flex-wrap: wrap;
+    align-items: center;
     justify-content: center;
-    gap: 10px;
+    gap: 0.5rem;
+}
 
-    margin-top: 15px;
+.chat-header .theme-toggle {
+    margin-left: auto;
+}
 
-    max-width: 700px;
+/* Tombol ikon (menu / tutup) — area sentuh 44px */
+.icon-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    flex-shrink: 0;
+    width: 2.75rem;
+    height: 2.75rem;
+    padding: 0;
+
+    border: none;
+    border-radius: 12px;
+    background: transparent;
+    color: var(--text-soft);
+
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+/* Hover hanya untuk perangkat yang benar-benar punya kursor, supaya
+   di layar sentuh tidak ada hover yang "menempel" setelah di-tap */
+@media (hover: hover) {
+    .sidebar-button:hover {
+        background: var(--purple-tint);
+        color: var(--purple-ink);
+    }
+
+    .history-item:hover {
+        background: var(--line);
+        color: var(--purple-ink);
+    }
+
+    .history-item.active:hover {
+        background: var(--purple-soft);
+    }
+
+    .icon-button:hover {
+        background: var(--purple-soft);
+        color: var(--purple-ink);
+    }
+}
+
+/* =====================================================================
+   PANEL CHAT
+   ===================================================================== */
+
+.main {
+    position: relative;
+
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+
+    display: flex;
+    flex-direction: column;
+
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+
+    overflow: hidden;
+}
+
+/* ---- Header (layar sempit) ---- */
+
+.chat-header {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+
+    min-height: calc(var(--header-height) + env(safe-area-inset-top));
+    padding: env(safe-area-inset-top) var(--gutter) 0;
+
+    background: var(--surface);
+    border-bottom: 1px solid var(--line);
+}
+
+.chat-header-logo {
+    width: 2rem;
+    height: 2rem;
+    flex-shrink: 0;
+
+    border-radius: 8px;
+    object-fit: cover;
+}
+
+.chat-header-title {
+    min-width: 0;
+
+    font-size: 1rem;
+    font-weight: 600;
+
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ---- Hero & rekomendasi (hanya saat belum ada pesan) ---- */
+
+.hero {
+    flex-shrink: 0;
+    padding: 0 var(--gutter);
+    text-align: center;
+}
+
+.hero h1 {
+    margin: 0;
+
+    font-size: clamp(1.625rem, 1.1rem + 3vw, 2.75rem);
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    color: var(--heading);
+
+    overflow-wrap: anywhere;
+}
+
+.hero h3 {
+    margin: 0.5rem 0 0;
+
+    font-size: 1rem;
+    font-weight: 400;
+    color: var(--text-muted);
+}
+
+.suggestion-section {
+    flex-shrink: 0;
+    padding: 0 var(--gutter);
+    text-align: center;
+}
+
+.suggestion-title {
+    margin-top: 1.5rem;
+
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+
+/* Grid: 1 kolom di HP, 2 kolom mulai 600px. Setiap pertanyaan sama lebar
+   dan sama tinggi per baris, dengan jarak tetap — tidak ada yang tumpang
+   tindih walau teksnya panjang (teks otomatis turun ke baris berikutnya). */
+.suggestions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.625rem;
+
+    width: 100%;
+    max-width: 40rem;
+    margin: 0.875rem auto 0;
 }
 
 .suggestion {
-    padding: 10px 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 
-    border-radius: 30px;
+    width: 100%;
+    min-width: 0;
+    min-height: 2.75rem;
+    padding: 0.5rem 1rem;
 
-    border: 1px solid #6544d8;
+    text-align: center;
+    overflow-wrap: anywhere;
 
-    background: white;
+    animation: suggestion-in 0.3s ease both;
+    animation-delay: calc(var(--i, 0) * 60ms);
+
+    border: 1px solid var(--pill-border);
+    border-radius: 1.5rem;
+    background: var(--surface);
+    color: var(--purple-ink);
+
+    font-size: 0.875rem;
+    line-height: 1.3;
 
     cursor: pointer;
-    font-family: inherit;
-    font-size: 14px;
-
-    color: #5d38d6;
-
-    transition: all .2s;
+    transition: background 0.2s, color 0.2s;
 }
 
-.suggestion:hover {
-    background: #6544d8;
-    color: white;
+@keyframes suggestion-in {
+    from {
+        opacity: 0;
+        transform: translateY(6px);
+    }
+
+    to {
+        opacity: 1;
+        transform: none;
+    }
 }
 
-/* CHAT AREA */
-#chatArea {
-    width: 70%;
-    max-width: 800px;
+@media (hover: hover) {
+    .suggestion:hover {
+        background: var(--purple);
+        color: #fff;
+    }
+}
+
+.suggestion:active {
+    background: var(--purple);
+    color: #fff;
+}
+
+/* ---- Kondisi belum ada pesan: hero + rekomendasi + input di-tengah-kan
+        secara vertikal (seperti tampilan awal Claude / ChatGPT).
+        Margin auto = ruang kosong dibagi rata atas & bawah; kalau layar
+        terlalu pendek (HP landscape) margin jadi 0 dan panel bisa di-scroll
+        sehingga tidak ada yang terpotong. ---- */
+
+.main.is-empty {
+    overflow-y: auto;
+}
+
+.main.is-empty .hero {
+    margin-top: auto;
+}
+
+.main.is-empty .input-box {
+    margin-top: 1.75rem;
+    margin-bottom: auto;
+}
+
+.main.is-empty .chat-area {
+    display: none;
+}
+
+/* ---- Area pesan (scroll mandiri) ---- */
+
+.chat-area {
+    flex: 1 1 auto;
+    min-height: 0;
+
+    /* Kolom pesan dipusatkan, maksimal 50rem (800px) lebar; scrollbar tetap
+       berada di tepi panel */
+    padding: 1rem max(var(--gutter), calc((100% - 50rem) / 2)) 1rem;
 
     overflow-y: auto;
-
-    padding: 10px 5px 30px 5px;
-
-    scroll-behavior: smooth;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: var(--scroll-thumb) transparent;
 }
 
-/* Belum ada pesan: jangan ambil ruang sama sekali, supaya
-   .input-box langsung menempel di bawah kotak rekomendasi */
-#chatArea:empty {
-    flex: 0 0 auto;
-    margin-top: 0;
-    padding: 0;
-}
-
-/* Sudah ada pesan: ambil sisa ruang dan jadi area yang scroll.
-   Pesan tersusun dari atas ke bawah (normal block flow) — ini
-   pola standar Claude/ChatGPT: pesan pertama muncul dekat atas,
-   ruang kosong di bawah sebelum input itu wajar saat percakapan
-   masih pendek, dan begitu pesan menumpuk area ini otomatis
-   scroll dengan pesan terbaru tetap terlihat di bagian bawah */
-#chatArea:not(:empty) {
-    flex: 1;
-    margin-top: 25px;
-}
-
-#chatArea::-webkit-scrollbar {
+.chat-area::-webkit-scrollbar,
+.history-list::-webkit-scrollbar {
     width: 8px;
 }
 
-#chatArea::-webkit-scrollbar-thumb {
-    background: #d3c9f7;
+.chat-area::-webkit-scrollbar-thumb,
+.history-list::-webkit-scrollbar-thumb {
+    background: var(--scroll-thumb);
     border-radius: 10px;
 }
 
-/* ===== MESSAGE ROW & BUBBLE (bagian utama yang dirapikan) ===== */
+/* ---- Kolom input (selalu di bagian bawah panel) ---- */
+
+.input-box {
+    flex-shrink: 0;
+    display: flex;
+
+    width: calc(100% - 2 * var(--gutter));
+    max-width: 47.5rem;
+    margin: 0.5rem auto 0;
+
+    background: var(--surface);
+    border-radius: 15px;
+    overflow: hidden;
+
+    box-shadow: var(--shadow-input);
+}
+
+.input-box:focus-within {
+    box-shadow: var(--shadow-input), 0 0 0 2px var(--focus-ring);
+}
+
+.input-box input {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 0.875rem 1rem;
+
+    border: none;
+    outline: none;
+    background: transparent;
+    color: var(--text);
+
+    /* 16px: di iOS Safari ukuran lebih kecil membuat halaman ter-zoom
+       otomatis saat input difokus */
+    font-size: 1rem;
+}
+
+.input-box input::placeholder {
+    color: var(--placeholder);
+    opacity: 1;
+}
+
+.input-box button {
+    flex-shrink: 0;
+    width: 3.5rem;
+    min-height: 3rem;
+
+    border: none;
+    background: var(--purple);
+    color: #fff;
+
+    font-size: 1.5rem;
+    cursor: pointer;
+
+    transition: background 0.2s;
+}
+
+.input-box button:disabled {
+    background: var(--purple-disabled);
+    cursor: not-allowed;
+}
+
+@media (hover: hover) {
+    .input-box button:not(:disabled):hover {
+        background: var(--purple-hover);
+    }
+}
+
+.input-box button:not(:disabled):active {
+    background: var(--purple-hover);
+}
+
+/* =====================================================================
+   BUBBLE PESAN
+   ===================================================================== */
 
 .message-row {
     display: flex;
     align-items: flex-end;
-    gap: 10px;
+    gap: 0.5rem;
 
-    margin-bottom: 18px;
+    margin-bottom: 1rem;
 }
 
 .message-row.user {
@@ -345,34 +701,33 @@ body {
 }
 
 .avatar {
-    width: 32px;
-    height: 32px;
     flex-shrink: 0;
+    width: 1.75rem;
+    height: 1.75rem;
 
     display: flex;
     align-items: center;
     justify-content: center;
 
     border-radius: 50%;
-    background: #eee;
+    background: var(--line);
 
-    font-size: 15px;
+    font-size: 0.875rem;
     line-height: 1;
 }
 
 .message {
-    max-width: 75%;
-    padding: 14px 18px;
+    min-width: 0;
+    max-width: min(40rem, calc(100% - 2.25rem));
+    padding: 0.75rem 1rem;
 
     border-radius: 16px;
-    overflow-wrap: break-word;
-    word-break: break-word;
+    overflow-wrap: anywhere;
 }
 
-/* Konten pesan — ini yang paling menentukan "rapi" atau tidak,
-   karena isi bisa berupa teks biasa maupun HTML hasil marked.js */
+/* Isi pesan — bisa teks biasa atau HTML hasil marked.js */
 .message-content {
-    font-size: 15.5px;
+    font-size: 0.9375rem;
     line-height: 1.65;
     color: inherit;
 }
@@ -390,7 +745,6 @@ body {
     margin-bottom: 0;
 }
 
-/* Rapikan elemen markdown yang sering muncul dari jawaban bot */
 .message-content p {
     margin: 0.5em 0;
 }
@@ -414,26 +768,55 @@ body {
     font-weight: 600;
 }
 
+.message-content :is(h1, h2, h3, h4) {
+    font-size: 1.05em;
+    font-weight: 600;
+    line-height: 1.4;
+}
+
 .message-content code {
-    background: rgba(0,0,0,.06);
     padding: 2px 6px;
+
     border-radius: 4px;
+    background: var(--code-bg);
+
     font-size: 0.9em;
     font-family: "Consolas", "Monaco", monospace;
 }
 
 .message-content pre {
-    background: rgba(0,0,0,.06);
     padding: 12px 14px;
+
     border-radius: 8px;
+    background: var(--code-bg);
+
     overflow-x: auto;
     font-size: 0.9em;
     line-height: 1.5;
 }
 
 .message-content pre code {
-    background: none;
     padding: 0;
+    background: none;
+}
+
+/* Tabel / gambar dari markdown tidak boleh melebarkan bubble di HP */
+.message-content table {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+    border-collapse: collapse;
+}
+
+.message-content th,
+.message-content td {
+    padding: 0.35em 0.6em;
+    border: 1px solid var(--table-border);
+}
+
+.message-content img {
+    max-width: 100%;
+    height: auto;
 }
 
 .message-content a {
@@ -447,37 +830,31 @@ body {
 
     font-size: 11px;
     line-height: 1;
-    opacity: .55;
+    opacity: 0.55;
 }
 
-/* USER MESSAGE */
 .user .message {
-    background: #6544d8;
-    color: white;
+    background: var(--purple);
+    color: #fff;
 
     border-bottom-right-radius: 4px;
 }
 
-/* BOT MESSAGE */
+/* Pesan pengguna ditampilkan sebagai teks biasa; baris baru dipertahankan */
+.user .message-content {
+    white-space: pre-wrap;
+}
+
 .bot .message {
-    background: white;
-    color: #222;
+    background: var(--surface);
+    color: var(--text);
 
     border-bottom-left-radius: 4px;
-
-    box-shadow: 0 3px 10px rgba(0,0,0,.08);
+    box-shadow: var(--shadow-bubble);
 }
 
-/* Responsif untuk layar sempit — bubble jangan terlalu mepet */
-@media (max-width: 900px) {
-    .message {
-        max-width: 85%;
-    }
-}
+/* ---- Indikator mengetik ---- */
 
-/* ===== END MESSAGE ROW & BUBBLE ===== */
-
-/* TYPING */
 .typing {
     display: flex;
     align-items: center;
@@ -490,24 +867,23 @@ body {
     width: 8px;
     height: 8px;
 
-    background: #aaa;
-
     border-radius: 50%;
+    background: var(--typing-dot);
 
     animation: blink 1.2s infinite;
 }
 
 .typing span:nth-child(2) {
-    animation-delay: .2s;
+    animation-delay: 0.2s;
 }
 
 .typing span:nth-child(3) {
-    animation-delay: .4s;
+    animation-delay: 0.4s;
 }
 
 @keyframes blink {
     0%, 80%, 100% {
-        opacity: .3;
+        opacity: 0.3;
     }
 
     40% {
@@ -515,66 +891,131 @@ body {
     }
 }
 
-/* HIDDEN */
-.hidden {
-    display: none !important;
+/* =====================================================================
+   HP LANDSCAPE / LAYAR PENDEK — rapatkan jarak vertikal
+   ===================================================================== */
+
+@media (max-height: 32.5em) {
+    .hero h1 {
+        font-size: clamp(1.375rem, 1rem + 2vw, 1.875rem);
+    }
+
+    .hero h3 {
+        margin-top: 0.25rem;
+        font-size: 0.9375rem;
+    }
+
+    .suggestion-title {
+        margin-top: 0.75rem;
+    }
+
+    .suggestions {
+        margin-top: 0.5rem;
+    }
+
+    .main.is-empty .input-box {
+        margin-top: 1rem;
+    }
 }
 
-/* HISTORY */
-.history-title {
-    width: 100%;
+/* =====================================================================
+   >= 37.5em (600px) — HP besar, tablet kecil
+   ===================================================================== */
 
-    margin-top: 30px;
-    margin-bottom: 12px;
+@media (min-width: 37.5em) {
+    :root {
+        --gutter: 1.25rem;
+    }
 
-    font-size: 14px;
-    font-weight: 600;
+    .suggestions {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
 
-    color: #555;
+    .avatar {
+        width: 2rem;
+        height: 2rem;
+        font-size: 0.9375rem;
+    }
+
+    .message {
+        max-width: min(40rem, calc(100% - 2.75rem));
+    }
+
+    .message-content {
+        font-size: 0.96875rem;
+    }
+
+    .input-box input {
+        padding: 1.125rem;
+    }
+
+    .input-box button {
+        width: 5rem;
+    }
 }
 
-#historyList {
-    width: 100%;
+/* =====================================================================
+   >= 56.25em (900px) — laptop, desktop, tablet landscape lebar:
+   sidebar PERMANEN di kiri, chat di kanan
+   ===================================================================== */
 
-    display: flex;
-    flex-direction: column;
+@media (min-width: 56.25em) {
+    :root {
+        --gutter: 1.5rem;
+    }
 
-    gap: 6px;
+    .sidebar,
+    .app.sidebar-open .sidebar {
+        position: static;
+        z-index: auto;
 
-    max-height: calc(100vh - 300px);
+        flex: 0 0 var(--sidebar-width);
+        width: var(--sidebar-width);
+        padding: 1.25rem;
 
-    overflow-y: auto;
+        transform: none;
+        visibility: visible;
+        box-shadow: none;
+        transition: none;
+    }
+
+    .sidebar-logo {
+        width: 5rem;
+        margin-bottom: 1rem;
+    }
+
+    .sidebar-overlay,
+    .sidebar-close,
+    .menu-button,
+    .chat-header {
+        display: none;
+    }
+
+    .main {
+        padding-bottom: 1.5rem;
+    }
+
+    .main.is-empty .input-box {
+        margin-top: 2rem;
+    }
+
+    .chat-area {
+        padding-top: 1.5rem;
+    }
 }
 
-.history-item {
-    padding: 11px 12px;
+/* =====================================================================
+   Kurangi animasi jika diminta sistem pengguna
+   ===================================================================== */
 
-    border-radius: 10px;
+@media (prefers-reduced-motion: reduce) {
+    .sidebar,
+    .sidebar-overlay {
+        transition: none;
+    }
 
-    cursor: pointer;
-
-    font-size: 14px;
-    line-height: 1.4;
-
-    color: #444;
-
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-
-    transition: background .2s;
+    .typing span {
+        animation: none;
+        opacity: 0.6;
+    }
 }
-
-.history-item:hover {
-    background: #eee;
-    color: #5d38d6;
-}
-
-.history-item.active {
-    background: #e9e3ff;
-
-    color: #5d38d6;
-
-    font-weight: 500;
-}
-
