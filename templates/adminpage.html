@@ -1,111 +1,363 @@
+
 <!DOCTYPE html>
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#ffffff">
 
     <title>Admin - Kantor Imigrasi Chatbot</title>
 
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/auth.css') }}">
+    <link rel="icon" type="image/png"
+          href="{{ url_for('static', filename='image/logo1.png') }}">
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='css/auth.css') }}">
 
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="https://unpkg.com/@lottiefiles/lottie-player@latest/dist/lottie-player.js"></script>
 </head>
 
-<body>
+<body class="admin-page">
 
-<div class="container">
+<div class="admin-app" id="adminApp">
 
-    <!-- SIDEBAR -->
-    <aside class="sidebar">
+    <button type="button" class="admin-sidebar-overlay"
+            id="adminSidebarOverlay" aria-label="Tutup menu"></button>
 
-        <img src="{{ url_for('static', filename='image/logo1.jpg') }}"alt="Logo Imigrasi" class="sidebar-logo">
+    <aside class="admin-sidebar" id="adminSidebar">
+        <div class="admin-sidebar-header">
+            <button type="button" class="admin-icon-button admin-sidebar-close"
+                    id="adminSidebarClose" aria-label="Tutup menu">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M6 6l12 12M18 6L6 18"/>
+                </svg>
+            </button>
 
-        <div class="title">
-            Kantor Imigrasi <br> Chatbot
+            <img
+                src="{{ url_for('static', filename='image/logo1.png') }}"
+                alt="Logo Kantor Imigrasi"
+                class="admin-sidebar-logo">
+
+            <div class="admin-sidebar-title">
+                Kantor Imigrasi<br>Chatbot
+            </div>
+
+            <div class="admin-badge">
+                <span class="admin-badge-dot"></span>
+                ADMIN PANEL
+            </div>
         </div>
 
-        <a href="{{ url_for('home') }}"class="sidebar-button">
-            ← Kembali ke Chatbot
-        </a>
+        <nav class="admin-sidebar-nav" aria-label="Navigasi admin">
+            <div class="admin-nav-label">MENU UTAMA</div>
 
-        <a href="{{ url_for('admin_logout') }}"class="logout-link">
-            Logout
-        </a>
+            <a href="{{ url_for('home') }}" class="admin-nav-link">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-6v-7h-4v7H4a1 1 0 0 1-1-1z"/>
+                </svg>
+                <span>Kembali ke Chatbot</span>
+                <span class="admin-nav-arrow">↗</span>
+            </a>
 
+            <a href="#knowledgeBase" class="admin-nav-link active"
+               aria-current="page">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M5 3.5h10l4 4V21H5a2 2 0 0 1-2-2V5.5a2 2 0 0 1 2-2z"/>
+                    <path d="M14 3.5V8h5M7 12h10M7 16h10"/>
+                </svg>
+                <span>Knowledge Base</span>
+            </a>
+        </nav>
+
+        <div class="admin-sidebar-bottom">
+            <div class="admin-sidebar-note">
+                <div class="admin-note-icon">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <circle cx="12" cy="12" r="9"/>
+                        <path d="M12 11v5M12 8h.01"/>
+                    </svg>
+                </div>
+                <div>
+                    <strong>Informasi</strong>
+                    <p>Kelola dokumen sumber pengetahuan chatbot.</p>
+                </div>
+            </div>
+
+            <a href="{{ url_for('admin_logout') }}" class="admin-logout-link">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M10 17l5-5-5-5M15 12H3"/>
+                    <path d="M12 3h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-6"/>
+                </svg>
+                <span>Logout</span>
+            </a>
+        </div>
     </aside>
 
-    <!-- MAIN CONTENT -->
-    <main class="main admin-main">
+    <main class="admin-main-panel">
 
-        <div class="admin-container">
+        <header class="admin-topbar">
+            <button type="button" class="admin-icon-button admin-menu-button"
+                    id="adminMenuButton" aria-label="Buka menu"
+                    aria-controls="adminSidebar" aria-expanded="false">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M4 6h16M4 12h16M4 18h16"/>
+                </svg>
+            </button>
 
-            <h1>Kelola Knowledge Base</h1>
+            <div class="admin-topbar-heading">
+                <span class="admin-topbar-eyebrow">ADMINISTRASI</span>
+                <span class="admin-topbar-title">Dashboard Admin</span>
+            </div>
 
-            <p class="subtitle">
-                Upload dokumen PDF baru untuk ditambahkan ke basis pengetahuan chatbot.
-            </p>
+            <div class="admin-topbar-right">
+                <div class="admin-status">
+                    <span class="admin-status-dot"></span>
+                    <span>Admin</span>
+                </div>
+            </div>
+        </header>
 
-            <!-- FLASH MESSAGE -->
-            {% with messages = get_flashed_messages() %}
+        <section class="admin-content" id="knowledgeBase">
+
+            <div class="admin-page-heading">
+                <div>
+                    <div class="admin-breadcrumb">
+                        Dashboard <span>/</span> Knowledge Base
+                    </div>
+                    <h1>Kelola Knowledge Base</h1>
+                    <p>
+                        Tambahkan dokumen PDF agar chatbot memiliki sumber
+                        pengetahuan yang relevan untuk menjawab pertanyaan.
+                    </p>
+                </div>
+
+                <div class="admin-heading-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M5 3.5h10l4 4V21H5a2 2 0 0 1-2-2V5.5a2 2 0 0 1 2-2z"/>
+                        <path d="M14 3.5V8h5M7 12h10M7 16h7"/>
+                    </svg>
+                </div>
+            </div>
+
+            {% with messages = get_flashed_messages(with_categories=true) %}
                 {% if messages %}
-                    <div class="flash-messages">
-
-                        {% for message in messages %}
-                            <div class="flash-message">
-                                {{ message }}
+                    <div class="admin-flash-messages" role="status" aria-live="polite">
+                        {% for category, message in messages %}
+                            <div class="admin-flash-message {{ category }}">
+                                <span class="admin-flash-icon" aria-hidden="true">
+                                    {% if category == 'error' or category == 'danger' %}
+                                        !
+                                    {% else %}
+                                        ✓
+                                    {% endif %}
+                                </span>
+                                <span>{{ message }}</span>
                             </div>
                         {% endfor %}
-
                     </div>
                 {% endif %}
             {% endwith %}
 
-            <!-- UPLOAD FORM -->
-            <form id="uploadForm" method="POST" action="{{ url_for('admin_upload_dokumen') }}" enctype="multipart/form-data" class="upload-form" >
-                <label for="document">
-                    File PDF
-                </label>
+            <div class="admin-stats-grid">
+                <article class="admin-stat-card">
+                    <div class="admin-stat-icon purple">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M5 3.5h10l4 4V21H5a2 2 0 0 1-2-2V5.5a2 2 0 0 1 2-2z"/>
+                            <path d="M14 3.5V8h5M7 12h10M7 16h7"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <div class="admin-stat-label">Jenis dokumen</div>
+                        <div class="admin-stat-value">PDF</div>
+                        <div class="admin-stat-description">Format yang didukung</div>
+                    </div>
+                </article>
 
-                <input type="file" id="document" name="document" accept=".pdf" required>
-
-                <button type="submit" id="uploadButton">
-                    Upload &amp; Ingest ke Knowledge Base
-                </button>
-            </form>
-
-            <div id="ingestLoading" class="ingest-loading">
-                <div class="ingest-loading-box">
-
-                    <lottie-player
-                        src="https://assets10.lottiefiles.com/packages/lf20_usmfx6bp.json"
-                        background="transparent"
-                        speed="1"
-                        loop
-                        autoplay>
-                    </lottie-player>
-
-                    <h3>Sedang memproses dokumen...</h3>
-
-                    <p>
-                        PDF sedang diproses dan dimasukkan ke Knowledge Base.
-                    </p>
-
-                    <span>
-                        Mohon tunggu, jangan tutup halaman ini.
-                    </span>
-
-                </div>
+                <article class="admin-stat-card">
+                    <div class="admin-stat-icon blue">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M12 3v12M7 10l5 5 5-5"/>
+                            <path d="M5 16v4h14v-4"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <div class="admin-stat-label">Proses dokumen</div>
+                        <div class="admin-stat-value">Ingest</div>
+                        <div class="admin-stat-description">Ekstraksi dan indeks pengetahuan</div>
+                    </div>
+                </article>
             </div>
-        </div>
 
+            <section class="admin-card">
+                <div class="admin-card-header">
+                    <div class="admin-card-heading">
+                        <div class="admin-card-icon">
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <path d="M12 16V4M7 9l5-5 5 5"/>
+                                <path d="M5 14v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5"/>
+                            </svg>
+                        </div>
+                        <div>
+                            <h2>Upload Dokumen Baru</h2>
+                            <p>Unggah PDF untuk diproses ke dalam Knowledge Base.</p>
+                        </div>
+                    </div>
+                    <span class="admin-format-badge">PDF</span>
+                </div>
+
+                <form id="uploadForm"
+                      method="POST"
+                      action="{{ url_for('admin_upload_dokumen') }}"
+                      enctype="multipart/form-data"
+                      class="admin-upload-form">
+
+                    <label for="document" class="admin-field-label">
+                        Pilih dokumen PDF
+                    </label>
+
+                    <label for="document" class="admin-dropzone" id="dropzone">
+                        <div class="admin-upload-icon">
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <path d="M12 16V4M7 9l5-5 5 5"/>
+                                <path d="M5 14v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5"/>
+                            </svg>
+                        </div>
+
+                        <strong id="filePrompt">Klik untuk memilih file PDF</strong>
+                        <span>Format PDF · Pilih satu dokumen</span>
+
+                        <div class="admin-selected-file" id="selectedFile"
+                             aria-live="polite">
+                            Belum ada file dipilih
+                        </div>
+                    </label>
+
+                    <input type="file"
+                           id="document"
+                           name="document"
+                           accept=".pdf,application/pdf"
+                           required>
+
+                    <div class="admin-upload-hint">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <circle cx="12" cy="12" r="9"/>
+                            <path d="M12 11v5M12 8h.01"/>
+                        </svg>
+                        Pastikan dokumen benar dan dapat dibaca sebelum diunggah.
+                    </div>
+
+                    <button type="submit" id="uploadButton"
+                            class="admin-upload-button">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M12 16V4M7 9l5-5 5 5"/>
+                            <path d="M5 14v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5"/>
+                        </svg>
+                        <span>Upload &amp; Ingest ke Knowledge Base</span>
+                    </button>
+                </form>
+            </section>
+
+            <section class="admin-process-card">
+                <div class="admin-process-icon">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M12 3v18M3 12h18"/>
+                        <circle cx="12" cy="12" r="8"/>
+                    </svg>
+                </div>
+                <div>
+                    <h3>Bagaimana proses ingest bekerja?</h3>
+                    <p>
+                        Dokumen yang diunggah akan diteruskan ke proses backend
+                        untuk diekstrak dan ditambahkan ke indeks pengetahuan,
+                        sesuai pipeline yang diterapkan pada aplikasi.
+                    </p>
+                </div>
+            </section>
+
+        </section>
     </main>
-
 </div>
 
-<script src="{{ url_for('static', filename='js/admin.js') }}"></script>
+<!-- OVERLAY PROSES INGEST -->
+<div id="ingestLoading" class="ingest-loading"
+     role="dialog" aria-modal="true"
+     aria-labelledby="ingestLoadingTitle"
+     aria-describedby="ingestLoadingDescription">
+
+    <div class="ingest-loading-box">
+        <lottie-player
+            src="https://assets10.lottiefiles.com/packages/lf20_usmfx6bp.json"
+            background="transparent"
+            speed="1"
+            loop
+            autoplay>
+        </lottie-player>
+
+        <h3 id="ingestLoadingTitle">Sedang memproses dokumen...</h3>
+
+        <p id="ingestLoadingDescription">
+            PDF sedang diproses dan dimasukkan ke Knowledge Base.
+        </p>
+
+        <span>Mohon tunggu dan jangan tutup halaman ini.</span>
+    </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/admin.js') }}" defer></script>
+
+<script>
+(() => {
+    const input = document.getElementById("document");
+    const selectedFile = document.getElementById("selectedFile");
+    const filePrompt = document.getElementById("filePrompt");
+    const dropzone = document.getElementById("dropzone");
+
+    if (!input || !selectedFile) return;
+
+    input.addEventListener("change", () => {
+        const file = input.files && input.files[0];
+
+        if (!file) {
+            selectedFile.textContent = "Belum ada file dipilih";
+            filePrompt.textContent = "Klik untuk memilih file PDF";
+            dropzone?.classList.remove("has-file");
+            return;
+        }
+
+        selectedFile.textContent =
+            `${file.name} · ${(file.size / (1024 * 1024)).toFixed(2)} MB`;
+        filePrompt.textContent = "Dokumen siap diunggah";
+        dropzone?.classList.add("has-file");
+    });
+
+    const app = document.getElementById("adminApp");
+    const menuButton = document.getElementById("adminMenuButton");
+    const closeButton = document.getElementById("adminSidebarClose");
+    const overlay = document.getElementById("adminSidebarOverlay");
+    const breakpoint = window.matchMedia("(min-width: 901px)");
+
+    function closeMenu() {
+        app?.classList.remove("admin-sidebar-open");
+        menuButton?.setAttribute("aria-expanded", "false");
+    }
+
+    menuButton?.addEventListener("click", () => {
+        const opened = app?.classList.toggle("admin-sidebar-open");
+        menuButton.setAttribute("aria-expanded", String(Boolean(opened)));
+    });
+
+    closeButton?.addEventListener("click", closeMenu);
+    overlay?.addEventListener("click", closeMenu);
+
+    document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") closeMenu();
+    });
+
+    breakpoint.addEventListener("change", (event) => {
+        if (event.matches) closeMenu();
+    });
+})();
+</script>
 
 </body>
-
-
 </html>

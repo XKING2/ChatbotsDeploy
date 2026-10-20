@@ -218,6 +218,25 @@ class ContextUnderstanding:
             best["score"], best["match_type"],
         )
 
+    def _is_alias_only_match(self, question: str, entity_name: Optional[str]) -> bool:
+        """True when the entity was matched via a short alias/acronym, not its full name."""
+        if not entity_name:
+            return False
+        q = " " + self.normalize(question) + " "
+        full = " " + self.normalize(entity_name) + " "
+        return full not in q
+
+    @staticmethod
+    def _top_chunk_entity_id(chunk_results: List[Dict[str, Any]]) -> Optional[str]:
+        best, best_score = None, None
+        for chunk in chunk_results:
+            score = ContextUnderstanding._score(chunk)
+            if score is None:
+                continue
+            if best_score is None or score > best_score:
+                best, best_score = chunk.get("entity_id"), score
+        return best
+
     def resolve_entity(
         self,
         explicit_entity: Optional[str],
@@ -424,7 +443,31 @@ class ContextUnderstanding:
         )
         anchored_topic = topic_evidence[0] if topic_evidence else None
 
-        if explicit_entity:
+        # An acronym alias (e.g. "kitas" from "(KITAS)") is a weak, single-word
+        # signal: it cannot tell "buat kitas" from "perpanjang kitas". When the
+        # top entity AND the top chunk both agree on a different entity, trust
+        # that agreement instead of the bare alias. Full-name matches and
+        # multi-entity ambiguity are untouched, and no score threshold is used.
+        alias_overridden = False
+        if (
+            explicit_entity
+            and not ambiguous
+            and semantic_entity
+            and semantic_entity != explicit_entity
+            and self._is_alias_only_match(normalized_question, explicit_entity)
+            and self._top_chunk_entity_id(chunk_results) == (
+                top_entity.get("entity_id") if top_entity else None
+            )
+            and (top_entity or {}).get("entity_id") is not None
+        ):
+            alias_overridden = True
+            overridden_explicit = explicit_entity
+            explicit_entity = None
+
+        if alias_overridden:
+            resolved_semantic_entity = semantic_entity
+            semantic_accepted = True
+        elif explicit_entity:
             resolved_semantic_entity = explicit_entity
         elif is_followup and previous_entity:
             # Preserve prior context for follow-ups; semantic retrieval may
@@ -500,7 +543,9 @@ class ContextUnderstanding:
         }
 
         domain_relevant = bool(entity_id)
-        if explicit_entity:
+        if alias_overridden:
+            resolution_reason = "semantic_overrides_alias"
+        elif explicit_entity:
             resolution_reason = "explicit_entity"
         elif is_followup and previous_entity and entity:
             resolution_reason = "follow_up_context"
@@ -525,7 +570,10 @@ class ContextUnderstanding:
             "detected_entity": semantic_entity,
             "detected_score": semantic_score,
             "entity_score_margin": score_margin,
-            "explicit_entity": explicit_entity,
+            "explicit_entity": explicit_entity or (
+                overridden_explicit if alias_overridden else None
+            ),
+            "alias_overridden": alias_overridden,
             "ambiguous_candidates": ambiguous,
             "previous_entity": previous_entity,
             "is_followup": is_followup,

@@ -1,4 +1,3 @@
-
 import re
 import unicodedata
 
@@ -14,7 +13,6 @@ WORD_REPLACEMENTS = {
     "gimana": "bagaimana",
     "gmn": "bagaimana",
     "knp": "kenapa",
-    "apaan": "apa",
     "apaan": "apa",
     "tau": "tahu",
     "udh": "sudah",
@@ -38,6 +36,33 @@ WORD_REPLACEMENTS = {
     "sih": "",
     "dong": "",
     "deh": "",
+}
+
+# Kata niat bahasa Inggris -> padanan istilah di knowledge base (Indonesia).
+# Kata Inggris asli TETAP dipertahankan; istilah Indonesia hanya DITAMBAHKAN
+# di akhir query agar embedding lintas-bahasa punya jangkar yang sama dengan
+# nama subtopik/entity (mis. "extend" -> "perpanjang perpanjangan").
+ENGLISH_INTENT_EXPANSIONS = {
+    "extend": "perpanjang perpanjangan",
+    "extending": "perpanjang perpanjangan",
+    "extension": "perpanjang perpanjangan",
+    "renew": "perpanjang perpanjangan",
+    "renewal": "perpanjang perpanjangan",
+    "prolong": "perpanjang perpanjangan",
+    "apply": "pembuatan pendaftaran",
+    "application": "pembuatan pendaftaran",
+    "cost": "biaya tarif",
+    "costs": "biaya tarif",
+    "fee": "biaya tarif",
+    "fees": "biaya tarif",
+    "price": "biaya tarif",
+    "tariff": "biaya tarif",
+    "requirement": "persyaratan syarat",
+    "requirements": "persyaratan syarat",
+    "procedure": "prosedur mekanisme",
+    "procedures": "prosedur mekanisme",
+    "lost": "hilang",
+    "damaged": "rusak",
 }
 
 
@@ -77,5 +102,19 @@ def normalize_query(text: str) -> str:
     # Rapikan spasi setelah kata yang dihapus.
     text = re.sub(r"\s+", " ", text).strip()
     text = re.sub(r"\s+([,.!?;:])", r"\1", text)
+
+    # Tambahkan istilah Indonesia untuk kata niat bahasa Inggris (tanpa
+    # menghapus kata aslinya, dan tanpa duplikasi).
+    tokens = [t.casefold() for t in re.findall(r"[^\W_]+", text, flags=re.UNICODE)]
+    extras = []
+    for token in tokens:
+        expansion = ENGLISH_INTENT_EXPANSIONS.get(token)
+        if not expansion:
+            continue
+        for word in expansion.split():
+            if word not in tokens and word not in extras:
+                extras.append(word)
+    if extras:
+        text = f"{text} {' '.join(extras)}"
 
     return text

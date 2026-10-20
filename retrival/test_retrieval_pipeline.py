@@ -74,7 +74,7 @@ def main():
         "RETRIEVAL PIPELINE DEBUG"
     )
 
-    question = "Apa Itu GCI" 
+    question = "how do i can extend my kitas?" 
 
     print(
         f"\nQuestion : {question}"

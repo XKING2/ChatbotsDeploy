@@ -2869,11 +2869,11 @@
                 {
                     "subtopic_id": "sub_6b6348b538e5",
                     "subtopic": "Negara Penerima ITK",
-                    "subtopic_hash": "951b68b4aa9e202bd464254743efaa1aece3ed5e58a2de40ad1dc7d95b179d0c",
+                    "subtopic_hash": "b39126c50f79d6e499c27acd043b64e331921055245cd9f4068c8e4a8b580034",
                     "content_chunks": [
                         {
                             "content_chunk_id": "sub_6b6348b538e5_o1_c1",
-                            "content_hash": "6ca46816d5044f10d6691140d82d330fa917ed31b9b156c7d29d76c1ce1d4a7b",
+                            "content_hash": "3063dfede1bdbebabd05b0fceeebaf7f1b5aaa29a56fcf2e3a51843394d03678",
                             "chunk_index": 1,
                             "total_chunks": 1
                         }
@@ -3569,11 +3569,11 @@
                 {
                     "subtopic_id": "sub_806c7f6a4b14",
                     "subtopic": "Negara Penerima VOA",
-                    "subtopic_hash": "e64dcade73b69b823ef4d0165bbb63197efb535d2c6924050aeceb3d0ac6a120",
+                    "subtopic_hash": "b39126c50f79d6e499c27acd043b64e331921055245cd9f4068c8e4a8b580034",
                     "content_chunks": [
                         {
                             "content_chunk_id": "sub_806c7f6a4b14_o1_c1",
-                            "content_hash": "2b1a8d3eb62013f8a38eda0a508a4ece80d3eb7ea0ac58d8b7b221876b07ee1d",
+                            "content_hash": "519a41ce627a64f4ffdaa7e80b76a7a30c68eca96c454ac17c024746f41b8511",
                             "chunk_index": 1,
                             "total_chunks": 1
                         }

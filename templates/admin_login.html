@@ -1,36 +1,294 @@
+
 <!DOCTYPE html>
 <html lang="id">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Login - Kantor Imigrasi Chatbot</title>
-<link rel="stylesheet" href="{{ url_for('static', filename='css/auth.css') }}">
-</head>
-<body>
-<div class="auth-box">
-    <img src="{{ url_for('static', filename='image/logo1.jpg') }}" alt="Logo Imigrasi" class="auth-logo">
-    <h1>Selamat Datang</h1>
-    <p class="subtitle">Login untuk melanjutkan percakapan &amp; riwayat chat kamu</p>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#f7f5ff">
+    <meta name="color-scheme" content="light">
 
-    {% with messages = get_flashed_messages() %}
-        {% if messages %}
-        <div class="flash-messages">
-            {% for message in messages %}
-            <div class="flash-message">{{ message }}</div>
-            {% endfor %}
-        </div>
+    <title>Login Admin - Kantor Imigrasi Chatbot</title>
+
+    <link
+        rel="icon"
+        type="image/png"
+        href="{{ url_for('static', filename='image/logo1.png') }}"
+    >
+
+    <link
+        rel="stylesheet"
+        href="{{ url_for('static', filename='css/auth.css') }}"
+    >
+
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+</head>
+
+<body>
+    <main class="auth-page">
+        <!-- Dekorasi latar -->
+        <div class="auth-decoration decoration-one" aria-hidden="true"></div>
+        <div class="auth-decoration decoration-two" aria-hidden="true"></div>
+
+        <section class="auth-box" aria-labelledby="loginTitle">
+
+            <!-- Branding -->
+            <header class="auth-brand">
+                <div class="auth-logo-wrap">
+                    <img
+                        src="{{ url_for('static', filename='image/logo1.png') }}"
+                        alt="Logo Kantor Imigrasi"
+                        class="auth-logo"
+                        width="80"
+                        height="80"
+                    >
+                </div>
+
+                <span class="brand-label">KANTOR IMIGRASI</span>
+                <span class="brand-subtitle">Sistem Layanan Digital</span>
+            </header>
+
+            <!-- Judul -->
+            <div class="auth-heading">
+                <h1 id="loginTitle">Selamat Datang</h1>
+                <p class="subtitle">
+                    Masuk menggunakan akun administrator untuk mengelola
+                    Knowledge Base chatbot.
+                </p>
+            </div>
+
+            <!-- Form login -->
+            <form
+                method="POST"
+                action="{{ url_for('admin_login') }}"
+                class="auth-form"
+                id="loginForm"
+            >
+                <div class="form-group">
+                    <label for="email">Email</label>
+
+                    <div class="input-wrap">
+                        <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="1.7"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            aria-hidden="true"
+                        >
+                            <rect x="3" y="5" width="18" height="14" rx="2"/>
+                            <path d="m3 7 9 6 9-6"/>
+                        </svg>
+
+                        <input
+                            type="email"
+                            id="email"
+                            name="email"
+                            placeholder="Masukkan email admin"
+                            autocomplete="username"
+                            autocapitalize="none"
+                            spellcheck="false"
+                            maxlength="254"
+                            required
+                        >
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="password">Password</label>
+
+                    <div class="input-wrap">
+                        <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="1.7"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            aria-hidden="true"
+                        >
+                            <rect x="4" y="10" width="16" height="11" rx="2"/>
+                            <path d="M8 10V7a4 4 0 0 1 8 0v3"/>
+                        </svg>
+
+                        <input
+                            type="password"
+                            id="password"
+                            name="password"
+                            placeholder="Masukkan password"
+                            autocomplete="current-password"
+                            required
+                        >
+
+                        <button
+                            type="button"
+                            class="password-toggle"
+                            id="passwordToggle"
+                            aria-label="Tampilkan password"
+                            aria-pressed="false"
+                            aria-controls="password"
+                        >
+                            <svg
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="1.7"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                aria-hidden="true"
+                            >
+                                <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/>
+                                <circle cx="12" cy="12" r="3"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+                <button type="submit" class="login-button" id="loginButton">
+                    <span id="loginButtonText">Masuk</span>
+
+                    <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.8"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        aria-hidden="true"
+                    >
+                        <path d="M5 12h14"/>
+                        <path d="m13 5 7 7-7 7"/>
+                    </svg>
+                </button>
+            </form>
+
+            <!-- Footer -->
+            <footer class="auth-footer">
+                <span class="footer-line" aria-hidden="true"></span>
+                <p>Sistem Informasi Layanan Keimigrasian</p>
+                <span class="footer-line" aria-hidden="true"></span>
+            </footer>
+
+        </section>
+
+        <p class="page-caption">
+            &copy; Kantor Imigrasi · Layanan Chatbot
+        </p>
+    </main>
+
+    
+    {% with flash_items = get_flashed_messages(with_categories=true) %}
+        {% if flash_items %}
+            <script id="flash-data" type="application/json">
+                {{ flash_items | tojson }}
+            </script>
+
+            <script>
+                (() => {
+                    "use strict";
+
+                    const flashDataElement = document.getElementById("flash-data");
+                    if (!flashDataElement) return;
+
+                    let flashItems = [];
+
+                    try {
+                        flashItems = JSON.parse(flashDataElement.textContent);
+                    } catch (error) {
+                        console.error("Gagal membaca notifikasi:", error);
+                        return;
+                    }
+
+                    const iconMap = {
+                        success: "success",
+                        error: "error",
+                        danger: "error",
+                        warning: "warning",
+                        info: "info"
+                    };
+
+                    const titleMap = {
+                        success: "Berhasil!",
+                        error: "Login Gagal",
+                        danger: "Login Gagal",
+                        warning: "Perhatian",
+                        info: "Informasi"
+                    };
+
+                    async function showFlashNotifications() {
+                        for (const [category, message] of flashItems) {
+                            await Swal.fire({
+                                icon: iconMap[category] || "info",
+                                title: titleMap[category] || "Informasi",
+                                text: message,
+                                confirmButtonText: "Mengerti",
+                                confirmButtonColor: "#5b4bdb",
+                                allowOutsideClick: false,
+                                heightAuto: false
+                            });
+                        }
+                    }
+
+                    if (document.readyState === "loading") {
+                        document.addEventListener(
+                            "DOMContentLoaded",
+                            showFlashNotifications,
+                            { once: true }
+                        );
+                    } else {
+                        showFlashNotifications();
+                    }
+                })();
+            </script>
         {% endif %}
     {% endwith %}
 
-    <form method="POST" action="{{ url_for('admin_login') }}">
-        <label for="email">Email</label>
-        <input type="email" id="email" name="email" required>
 
-        <label for="password">Password</label>
-        <input type="password" id="password" name="password" required>
+    <!-- Interaksi form -->
+    <script>
+        (() => {
+            "use strict";
 
-        <button type="submit">Masuk</button>
-    </form>
-</div>
+            const passwordInput = document.getElementById("password");
+            const toggleButton = document.getElementById("passwordToggle");
+            const loginForm = document.getElementById("loginForm");
+            const loginButton = document.getElementById("loginButton");
+            const loginButtonText = document.getElementById("loginButtonText");
+
+            // Tampilkan/sembunyikan password.
+            if (passwordInput && toggleButton) {
+                toggleButton.addEventListener("click", () => {
+                    const showPassword = passwordInput.type === "password";
+
+                    passwordInput.type = showPassword ? "text" : "password";
+                    toggleButton.setAttribute("aria-pressed", String(showPassword));
+                    toggleButton.setAttribute(
+                        "aria-label",
+                        showPassword ? "Sembunyikan password" : "Tampilkan password"
+                    );
+                });
+            }
+
+            // Cegah klik submit berulang tanpa mengganggu pengiriman pertama.
+            if (loginForm && loginButton && loginButtonText) {
+                loginForm.addEventListener("submit", (event) => {
+                    if (!loginForm.checkValidity()) {
+                        event.preventDefault();
+                        loginForm.reportValidity();
+                        return;
+                    }
+
+                    if (loginButton.disabled) {
+                        event.preventDefault();
+                        return;
+                    }
+
+                    loginButton.disabled = true;
+                    loginButton.setAttribute("aria-busy", "true");
+                    loginButtonText.textContent = "Memproses...";
+                });
+            }
+        })();
+    </script>
 </body>
 </html>

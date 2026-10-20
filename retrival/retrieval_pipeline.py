@@ -9,6 +9,11 @@ ENTITY_TOP_K = 5
 SUBTOPIC_TOP_K = 5
 CHUNK_TOP_K = 5
 
+# Context assembly for the LLM (tidak mengubah pemilihan entity/subtopic).
+ENTITY_CHUNK_TOP_K = 6      # tanpa subtopic: ambil N chunk terbaik dalam entity
+EXTRA_CHUNK_TOP_K = 2       # dengan subtopic: tambahan chunk terbaik dari subtopic lain
+MAX_RELEVANT_CHUNKS = 12    # batas aman panjang prompt
+
 
 class RetrievalPipeline:
     def __init__(self, context_engine=None):
@@ -103,6 +108,44 @@ class RetrievalPipeline:
             "best_candidate": None,
         }
 
+    def _collect_relevant_chunks(self, query_embedding, entity_id, subtopic_id):
+        """Build the chunks sent to the LLM, scoped to the resolved entity.
+
+        The global top-K chunk search can leave only one or two chunks of the
+        resolved entity, and a subtopic is often split into several chunks.
+        Here the search is restricted to the entity first, then every chunk of
+        the resolved subtopic is included in reading order (chunk_index).
+        """
+        if not entity_id:
+            return []
+
+        existing = self.chunk_collection.get(
+            where={"entity_id": entity_id}, include=["metadatas"]
+        )
+        total = len(existing.get("ids") or [])
+        if total == 0:
+            return []
+
+        raw = semantic_search(
+            query_embedding=query_embedding,
+            collection=self.chunk_collection,
+            where={"entity_id": entity_id},
+            top_k=total,
+            result_type="chunk",
+        )
+        scored = self._convert_results(raw, "chunk")  # sorted by score (best first)
+
+        if subtopic_id:
+            primary = [c for c in scored if c.get("subtopic_id") == subtopic_id]
+            primary.sort(key=lambda c: (c.get("chunk_index") is None, c.get("chunk_index") or 0))
+            primary_ids = {c["id"] for c in primary}
+            extras = [c for c in scored if c["id"] not in primary_ids][:EXTRA_CHUNK_TOP_K]
+            chunks = primary + extras
+        else:
+            chunks = scored[:ENTITY_CHUNK_TOP_K]
+
+        return chunks[:MAX_RELEVANT_CHUNKS]
+
     def retrieve(self, question, previous_entity=None, top_k=CHUNK_TOP_K):
         if not question or not question.strip():
             return self._empty_result()
@@ -184,6 +227,14 @@ class RetrievalPipeline:
 
         best_candidate = candidates[0] if candidates else None
         found = bool(domain_relevant and candidates)
+
+        relevant_chunks = []
+        if found:
+            relevant_chunks = self._collect_relevant_chunks(
+                query_embedding,
+                resolved_entity_id,
+                context.get("subtopic_id"),
+            )
         if found:
             status = "found"
         elif not domain_relevant:
@@ -201,6 +252,8 @@ class RetrievalPipeline:
             "entity_results": entity_results,
             "subtopic_results": subtopic_results,
             "chunk_results": chunk_results,
+            # Full, ordered context for answer generation (used by format_context).
+            "relevant_chunks": relevant_chunks,
             # Relevant, entity-scoped candidates for answer generation.
             "results": candidates,
             "top3": candidates[:3],

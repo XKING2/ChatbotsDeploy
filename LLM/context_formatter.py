@@ -60,6 +60,7 @@ def format_context(retrieval_result):
         context_meta = retrieval_result.get("context") or {}
         resolved_entity_id = context_meta.get("entity_id")
         chunks = retrieval_result.get("relevant_chunks")
+        keep_reading_order = chunks is not None
         if chunks is None:
             chunks = retrieval_result.get("chunk_results") or []
 
@@ -90,15 +91,19 @@ def format_context(retrieval_result):
                 "category": item.get("category"),
                 "source": item.get("document") or item.get("source"),
                 "page": _page_value(item),
+                "chunk_index": item.get("chunk_index"),
                 "similarity_score": score,
                 "content": content,
             })
 
-        normalized.sort(
-            key=lambda item: item["similarity_score"]
-            if item["similarity_score"] is not None else -1,
-            reverse=True,
-        )
+        # relevant_chunks is already in reading order (subtopic chunks by
+        # chunk_index); re-sorting by score would scramble multi-part content.
+        if not keep_reading_order:
+            normalized.sort(
+                key=lambda item: item["similarity_score"]
+                if item["similarity_score"] is not None else -1,
+                reverse=True,
+            )
         payload = {
             "found": bool(normalized),
             "resolved_entity": context_meta.get("entity"),
