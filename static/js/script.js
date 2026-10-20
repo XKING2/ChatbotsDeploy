@@ -1,467 +1,685 @@
+
 "use strict";
 
-// ===== Elemen =====
-const app = document.getElementById("app");
-const mainPanel = document.getElementById("main");
-const sidebar = document.getElementById("sidebar");
-const sidebarOverlay = document.getElementById("sidebarOverlay");
-const menuButton = document.getElementById("menuButton");
-const sidebarClose = document.getElementById("sidebarClose");
+/* =====================================================
+   ELEMENT HTML
+===================================================== */
+const $ = (selector) => document.querySelector(selector);
 
-const chatArea = document.getElementById("chatArea");
-const questionInput = document.getElementById("question");
-const sendButton = document.getElementById("sendButton");
-const heroSection = document.getElementById("heroSection");
-const suggestionSection = document.getElementById("suggestionSection");
-const suggestionList = document.getElementById("suggestionList");
-const historyList = document.getElementById("historyList");
-const homeButton = document.getElementById("homeButton");
-const historyButton = document.getElementById("historyButton");
+const app = $("#app");
+const main = $("#main");
+const sidebar = $("#sidebar");
+const sidebarOverlay = $("#sidebarOverlay");
+const sidebarClose = $("#sidebarClose");
+const menuButton = $("#menuButton");
+const chatArea = $("#chatArea");
+const chatForm = $("#chatForm");
+const questionInput = $("#question");
+const sendButton = $("#sendButton");
+const suggestionList = $("#suggestionList");
+const historyList = $("#historyList");
+
+const LANGUAGE_KEY = "chatbot-language";
+const THEME_KEY = "chatbot-theme";
 
 let currentConversationId = null;
+let currentLanguage = "id";
+let isSending = false;
 
-// ===== Tema terang / gelap =====
-// Tema awal sudah dipasang oleh script kecil di <head> (anti-kilat). Di sini
-// hanya: ganti tema lewat tombol, simpan pilihan, dan ikuti pengaturan
-// sistem selama pengguna belum memilih sendiri.
-const THEME_KEY = "chatbot-theme";
-const systemDarkQuery = window.matchMedia("(prefers-color-scheme: dark)");
+/* =====================================================
+   TRANSLATIONS
+===================================================== */
+const translations = {
+    id: {
+        home: "Home",
+        history: "Riwayat Chat",
+        greeting: "HALO PENGUNJUNG",
+        subtitle: "Apa yang bisa saya bantu hari ini?",
+        suggestions: "Rekomendasi Pertanyaan",
+        placeholder: "Masukkan pertanyaan Anda di sini",
+        send: "Kirim pesan",
+        themeDark: "Mode gelap",
+        themeLight: "Mode terang",
+        connectionError: "Maaf, tidak bisa terhubung ke server. Coba lagi.",
+        responseError: "Maaf, terjadi kesalahan saat memproses pertanyaan.",
+        emptyAnswer: "Maaf, belum ada jawaban yang bisa ditampilkan.",
+        loading: "Sedang memproses...",
+        openMenu: "Buka menu",
+        closeMenu: "Tutup menu"
+    },
 
-function getStoredTheme() {
-  try {
-    const value = localStorage.getItem(THEME_KEY);
-    return value === "dark" || value === "light" ? value : null;
-  } catch (err) {
-    return null; // mis. mode privat / penyimpanan diblokir
-  }
+    en: {
+        home: "Home",
+        history: "Chat History",
+        greeting: "HELLO, VISITOR",
+        subtitle: "How can I help you today?",
+        suggestions: "Suggested Questions",
+        placeholder: "Type your question here",
+        send: "Send message",
+        themeDark: "Dark mode",
+        themeLight: "Light mode",
+        connectionError: "Unable to connect to the server. Please try again.",
+        responseError: "Sorry, an error occurred while processing your question.",
+        emptyAnswer: "Sorry, no answer is available yet.",
+        loading: "Processing...",
+        openMenu: "Open menu",
+        closeMenu: "Close menu"
+    }
+};
+
+function t(key) {
+    return translations[currentLanguage]?.[key]
+        ?? translations.id[key]
+        ?? key;
 }
 
-function saveTheme(theme) {
-  try {
-    localStorage.setItem(THEME_KEY, theme);
-  } catch (err) {
-    /* tidak masalah: tema tetap berlaku untuk sesi ini */
-  }
+/* =====================================================
+   PREFERENSI BAHASA
+===================================================== */
+function loadLanguage() {
+    try {
+        currentLanguage =
+            localStorage.getItem(LANGUAGE_KEY) === "en" ? "en" : "id";
+    } catch (_) {
+        currentLanguage = "id";
+    }
 }
 
-function currentTheme() {
-  return document.documentElement.getAttribute("data-theme") === "dark"
-    ? "dark"
-    : "light";
-}
+const suggestionPool = {
+    id: [
+        "Apa itu KITAS?",
+        "Apa itu KITAP?",
+        "Apa perbedaan KITAS dan KITAP?",
+        "Berapa Pembayaran KITAP",
+        "Apa saja syarat membuat KITAS?",
+        "Bagaimana cara memperpanjang KITAS?",
+        "Cara apply SKIM",
+        "Apa itu VOA?",
+        "Apa saja syarat VOA?",
+        "Bagaimana cara memperpanjang VOA?",
+        "Berapa biaya perpanjangan VOA?",
+        "Apa itu paspor elektronik?",
+        "Apa saja syarat membuat paspor elektronik?",
+        "Apa itu izin tinggal?",
+        "Apa saja jenis visa di Indonesia?",
+        "Bagaimana cara memperpanjang visa kunjungan?",
+        "Berapa lama proses pembuatan KITAS?"
+    ],
 
-function applyTheme(theme) {
-  document.documentElement.setAttribute("data-theme", theme);
-
-  // Warna bar status browser HP mengikuti warna header
-  const themeColor = document.querySelector('meta[name="theme-color"]');
-  if (themeColor) themeColor.setAttribute("content", theme === "dark" ? "#211e30" : "#ffffff");
-
-  // Tombol menunjukkan tema yang AKAN dipilih saat ditekan
-  const target = theme === "dark" ? "terang" : "gelap";
-  document.querySelectorAll(".theme-toggle").forEach((btn) => {
-    btn.setAttribute("aria-label", `Ganti ke mode ${target}`);
-    const label = btn.querySelector(".theme-toggle-label");
-    if (label) label.textContent = `Mode ${target}`;
-  });
-}
-
-function toggleTheme() {
-  const next = currentTheme() === "dark" ? "light" : "dark";
-  applyTheme(next);
-  saveTheme(next);
-}
-
-// ===== Rekomendasi pertanyaan (acak setiap Home / halaman dimuat) =====
-// Tambah / ubah pertanyaan di sini. Pastikan topiknya memang ada di
-// knowledge base supaya chatbot bisa menjawabnya.
-const SUGGESTION_POOL = [
-  "Apa itu KITAS?",
-  "Apa itu KITAP?",
-  "Apa perbedaan KITAS dan KITAP?",
-  "Berapa Pembayaran KITAP",
-  "Apa saja syarat membuat KITAS?",
-  "Bagaimana cara memperpanjang KITAS?",
-  "Cara apply SKIM",
-  "Apa itu VOA?",
-  "Apa saja syarat VOA?",
-  "Bagaimana cara memperpanjang VOA?",
-  "Berapa biaya perpanjangan VOA?",
-  "Apa itu paspor elektronik?",
-  "Apa saja syarat membuat paspor elektronik?",
-  "Apa itu izin tinggal?",
-  "Apa saja jenis visa di Indonesia?",
-  "Bagaimana cara memperpanjang visa kunjungan?",
-  "Berapa lama proses pembuatan KITAS?",
-  "What are the requirements for VOA?",
-  "How do I extend my stay permit?",
-];
-const SUGGESTION_COUNT = 4;
-let shownSuggestions = [];
+    en: [
+        "What is a KITAS?",
+        "What is a KITAP?",
+        "What is the difference between KITAS and KITAP?",
+        "What are the requirements for a KITAS?",
+        "How do I extend my KITAS?",
+        "What is a Visa on Arrival (VOA)?",
+        "What are the requirements for a VOA?",
+        "How do I extend my VOA?",
+        "How much does a VOA extension cost?",
+        "What is an electronic passport?",
+        "What are the requirements for an electronic passport?",
+        "What is a stay permit?",
+        "What types of visas are available in Indonesia?",
+        "How do I extend a visit visa?",
+        "How long does KITAS processing take?"
+    ]
+};
 
 function shuffle(items) {
-  const copy = items.slice();
-  for (let i = copy.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [copy[i], copy[j]] = [copy[j], copy[i]];
-  }
-  return copy;
-}
+    const result = [...items];
 
-function pickSuggestions() {
-  // Utamakan pertanyaan yang BELUM tampil di set sebelumnya,
-  // supaya tiap kali Home dibuka isinya terasa berganti.
-  const fresh = SUGGESTION_POOL.filter((q) => !shownSuggestions.includes(q));
-  const source = fresh.length >= SUGGESTION_COUNT ? fresh : SUGGESTION_POOL;
-  return shuffle(source).slice(0, SUGGESTION_COUNT);
+    for (let i = result.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [result[i], result[j]] = [result[j], result[i]];
+    }
+
+    return result;
 }
 
 function renderSuggestions() {
-  if (!suggestionList) return;
+    if (!suggestionList) return;
 
-  shownSuggestions = pickSuggestions();
-  suggestionList.innerHTML = "";
-  shownSuggestions.forEach((question, index) => {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "suggestion";
-    btn.textContent = question;
-    btn.style.setProperty("--i", index); // jeda animasi muncul bertahap
-    suggestionList.appendChild(btn);
-  });
+    suggestionList.replaceChildren();
+
+    shuffle(suggestionPool[currentLanguage])
+        .slice(0, 4)
+        .forEach((question) => {
+            const button = document.createElement("button");
+
+            button.type = "button";
+            button.className = "suggestion";
+            button.textContent = question;
+
+            suggestionList.appendChild(button);
+        });
 }
 
-// ===== Sidebar: panel permanen (layar lebar) atau drawer (layar sempit) =====
-// Breakpoint HARUS sama dengan breakpoint sidebar permanen di style.css
-// (56.25em = 900px pada ukuran teks standar).
-const wideLayout = window.matchMedia("(min-width: 56.25em)");
+function applyLanguage(language) {
+    currentLanguage = language === "en" ? "en" : "id";
 
-function isDrawerOpen() {
-  return app.classList.contains("sidebar-open");
+    document.documentElement.lang = currentLanguage;
+
+    try {
+        localStorage.setItem(LANGUAGE_KEY, currentLanguage);
+    } catch (_) {}
+
+    const idButton = $("#languageId");
+    const enButton = $("#languageEn");
+
+    if (idButton) {
+        idButton.classList.toggle("active", currentLanguage === "id");
+        idButton.setAttribute(
+            "aria-pressed",
+            String(currentLanguage === "id")
+        );
+    }
+
+    if (enButton) {
+        enButton.classList.toggle("active", currentLanguage === "en");
+        enButton.setAttribute(
+            "aria-pressed",
+            String(currentLanguage === "en")
+        );
+    }
+
+    const elements = {
+        homeLabel: "home",
+        historyTitle: "history",
+        heroHeading: "greeting",
+        heroSubtitle: "subtitle",
+        suggestionTitle: "suggestions"
+    };
+
+    Object.entries(elements).forEach(([id, key]) => {
+        const element = document.getElementById(id);
+
+        if (element) {
+            element.textContent = t(key);
+        }
+    });
+
+    if (questionInput) {
+        questionInput.placeholder = t("placeholder");
+        questionInput.setAttribute("aria-label", t("placeholder"));
+    }
+
+    if (sendButton) {
+        sendButton.setAttribute("aria-label", t("send"));
+    }
+
+    if (menuButton) {
+        menuButton.setAttribute("aria-label", t("openMenu"));
+    }
+
+    if (sidebarClose) {
+        sidebarClose.setAttribute("aria-label", t("closeMenu"));
+    }
+
+    document.querySelectorAll(".theme-toggle").forEach((button) => {
+        const label = button.querySelector(".theme-toggle-label");
+
+        button.setAttribute(
+            "aria-label",
+            currentTheme() === "dark" ? t("themeLight") : t("themeDark")
+        );
+
+        if (label) {
+            label.textContent = currentTheme() === "dark"
+                ? t("themeLight")
+                : t("themeDark");
+        }
+    });
+
+    renderSuggestions();
 }
+
+$("#languageId")?.addEventListener("click", () => {
+    if (currentLanguage !== "id") {
+        applyLanguage("id");
+    }
+});
+
+$("#languageEn")?.addEventListener("click", () => {
+    if (currentLanguage !== "en") {
+        applyLanguage("en");
+    }
+});
+
+/* =====================================================
+   DARK MODE
+===================================================== */
+function currentTheme() {
+    return document.documentElement.dataset.theme === "dark"
+        ? "dark"
+        : "light";
+}
+
+function applyTheme(theme) {
+    const selectedTheme = theme === "dark" ? "dark" : "light";
+
+    document.documentElement.dataset.theme = selectedTheme;
+
+    const meta = $('meta[name="theme-color"]');
+
+    if (meta) {
+        meta.content = selectedTheme === "dark" ? "#17161d" : "#ffffff";
+    }
+
+    document.querySelectorAll(".theme-toggle").forEach((button) => {
+        const label = button.querySelector(".theme-toggle-label");
+
+        button.setAttribute(
+            "aria-label",
+            selectedTheme === "dark" ? t("themeLight") : t("themeDark")
+        );
+
+        if (label) {
+            label.textContent = selectedTheme === "dark"
+                ? t("themeLight")
+                : t("themeDark");
+        }
+    });
+}
+
+function toggleTheme() {
+    const next = currentTheme() === "dark" ? "light" : "dark";
+
+    applyTheme(next);
+
+    try {
+        localStorage.setItem(THEME_KEY, next);
+    } catch (_) {}
+}
+
+document.querySelectorAll(".theme-toggle").forEach((button) => {
+    button.addEventListener("click", toggleTheme);
+});
+
+/* =====================================================
+   SIDEBAR RESPONSIF
+===================================================== */
+const wideLayout = window.matchMedia("(min-width: 901px)");
 
 function openSidebar() {
-  // Di layar lebar sidebar sudah permanen, tidak ada drawer.
-  if (wideLayout.matches || isDrawerOpen()) return;
+    if (!app || wideLayout.matches) return;
 
-  app.classList.add("sidebar-open");
-  menuButton.setAttribute("aria-expanded", "true");
-  // Area chat di belakang overlay tidak boleh bisa difokus / diklik
-  mainPanel.setAttribute("inert", "");
-  sidebarClose.focus({ preventScroll: true });
+    app.classList.add("sidebar-open");
+    menuButton?.setAttribute("aria-expanded", "true");
 }
 
 function closeSidebar() {
-  if (!isDrawerOpen()) return;
+    if (!app) return;
 
-  app.classList.remove("sidebar-open");
-  menuButton.setAttribute("aria-expanded", "false");
-  mainPanel.removeAttribute("inert");
-  // Kembalikan fokus ke tombol yang membuka drawer
-  menuButton.focus({ preventScroll: true });
+    app.classList.remove("sidebar-open");
+    menuButton?.setAttribute("aria-expanded", "false");
 }
 
-// Kalau layar tiba-tiba jadi lebar (rotasi / resize) saat drawer terbuka,
-// reset status drawer supaya tidak "nyangkut".
-function handleLayoutChange() {
-  if (!wideLayout.matches) return;
-  app.classList.remove("sidebar-open");
-  menuButton.setAttribute("aria-expanded", "false");
-  mainPanel.removeAttribute("inert");
+menuButton?.addEventListener("click", () => {
+    if (app?.classList.contains("sidebar-open")) {
+        closeSidebar();
+    } else {
+        openSidebar();
+    }
+});
+
+sidebarClose?.addEventListener("click", closeSidebar);
+sidebarOverlay?.addEventListener("click", closeSidebar);
+
+document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeSidebar();
+});
+
+wideLayout.addEventListener("change", (event) => {
+    if (event.matches) closeSidebar();
+});
+
+/* =====================================================
+   TATA LETAK CHAT
+===================================================== */
+function updateChatLayout() {
+    const hasMessages = Boolean(chatArea?.children.length);
+
+    main?.classList.toggle("has-messages", hasMessages);
+    main?.classList.toggle("is-empty", !hasMessages);
 }
 
-// ===== Scroll area pesan =====
-function isNearBottom() {
-  return chatArea.scrollHeight - chatArea.scrollTop - chatArea.clientHeight < 80;
+function scrollToBottom() {
+    if (chatArea) {
+        chatArea.scrollTop = chatArea.scrollHeight;
+    }
 }
 
-function scrollChatToBottom() {
-  chatArea.scrollTop = chatArea.scrollHeight;
+function getCurrentTime() {
+    return new Intl.DateTimeFormat(
+        currentLanguage === "en" ? "en-US" : "id-ID",
+        {
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false
+        }
+    ).format(new Date());
 }
 
-// ===== Render pesan ke #chatArea =====
-function renderMessage(role, content, time, { scroll = true } = {}) {
-  // Dicek SEBELUM pesan baru ditambahkan: kalau pengguna sedang membaca
-  // pesan lama (scroll ke atas), layar tidak ditarik paksa ke bawah.
-  // Pesan milik pengguna sendiri selalu diikuti.
-  const shouldFollow = scroll && (role === "user" || isNearBottom());
+/* =====================================================
+   RENDER PESAN
+===================================================== */
+function renderMessage(role, content, time = getCurrentTime()) {
+    if (!chatArea) return;
 
-  const row = document.createElement("div");
-  row.className = `message-row ${role === "user" ? "user" : "bot"}`;
+    const row = document.createElement("div");
+    row.className = `message-row ${role === "user" ? "user" : "bot"}`;
 
-  const avatar = document.createElement("div");
-  avatar.className = "avatar";
-  avatar.textContent = role === "user" ? "🧑" : "🤖";
+    const avatar = document.createElement("div");
+    avatar.className = "avatar";
+    avatar.textContent = role === "user" ? "🧑" : "🤖";
+    avatar.setAttribute("aria-hidden", "true");
 
-  const bubble = document.createElement("div");
-  bubble.className = "message";
+    const bubble = document.createElement("div");
+    bubble.className = "message";
 
-  const contentEl = document.createElement("div");
-  contentEl.className = "message-content";
-  if (role === "user") {
-    // Teks pengguna ditampilkan apa adanya (bukan HTML)
-    contentEl.textContent = content;
-  } else if (typeof marked !== "undefined") {
-    // marked.js untuk render markdown dari jawaban bot (list, bold, dll)
-    contentEl.innerHTML = marked.parse(content);
-  } else {
-    contentEl.textContent = content;
-  }
+    const body = document.createElement("div");
+    body.className = "message-content";
 
-  const metaEl = document.createElement("div");
-  metaEl.className = "meta";
-  metaEl.textContent = time || "";
-
-  bubble.appendChild(contentEl);
-  bubble.appendChild(metaEl);
-
-  if (role === "user") {
-    row.appendChild(bubble);
-    row.appendChild(avatar);
-  } else {
-    row.appendChild(avatar);
-    row.appendChild(bubble);
-  }
-
-  chatArea.appendChild(row);
-  if (shouldFollow) scrollChatToBottom();
-}
-
-function showTypingIndicator() {
-  const shouldFollow = isNearBottom();
-
-  const row = document.createElement("div");
-  row.className = "message-row bot";
-  row.id = "typingIndicator";
-
-  const avatar = document.createElement("div");
-  avatar.className = "avatar";
-  avatar.textContent = "🤖";
-
-  const bubble = document.createElement("div");
-  bubble.className = "message";
-  bubble.innerHTML = `<div class="typing"><span></span><span></span><span></span></div>`;
-
-  row.appendChild(avatar);
-  row.appendChild(bubble);
-  chatArea.appendChild(row);
-  if (shouldFollow) scrollChatToBottom();
-}
-
-function removeTypingIndicator() {
-  const el = document.getElementById("typingIndicator");
-  if (el) el.remove();
-}
-
-// "Belum ada pesan" = hero + rekomendasi terlihat, class is-empty aktif
-// (CSS memakai class ini untuk menengahkan hero + input).
-function hideHeroIfNeeded() {
-  if (heroSection) heroSection.classList.add("hidden");
-  if (suggestionSection) suggestionSection.classList.add("hidden");
-  mainPanel.classList.remove("is-empty");
-}
-
-function showHero() {
-  if (heroSection) heroSection.classList.remove("hidden");
-  if (suggestionSection) suggestionSection.classList.remove("hidden");
-  mainPanel.classList.add("is-empty");
-}
-
-// ===== Kirim pesan =====
-async function sendMessage(text) {
-  const message = (text || questionInput.value).trim();
-  if (!message) return;
-
-  hideHeroIfNeeded();
-  renderMessage("user", message, currentTime());
-  questionInput.value = "";
-  sendButton.disabled = true;
-  showTypingIndicator();
-
-  try {
-    const res = await fetch("/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        message,
-        conversation_id: currentConversationId,
-      }),
-    });
-    const data = await res.json();
-
-    removeTypingIndicator();
-
-    if (!res.ok) {
-      renderMessage("bot", `Maaf, terjadi kesalahan: ${data.error || "unknown"}`);
-      return;
+    if (role === "user") {
+        body.textContent = content;
+    } else if (typeof marked !== "undefined") {
+        body.innerHTML = marked.parse(content || "");
+    } else {
+        body.textContent = content || "";
     }
 
-    currentConversationId = data.conversation_id;
-    renderMessage("bot", data.answer, data.time);
-    loadHistory(); // refresh sidebar biar percakapan baru muncul
-  } catch (err) {
-    removeTypingIndicator();
-    renderMessage("bot", "Maaf, tidak bisa terhubung ke server. Coba lagi.");
-    console.error(err);
-  } finally {
-    sendButton.disabled = false;
-  }
+    const meta = document.createElement("div");
+    meta.className = "meta";
+    meta.textContent = time || getCurrentTime();
+
+    bubble.append(body, meta);
+
+    if (role === "user") {
+        row.append(bubble, avatar);
+    } else {
+        row.append(avatar, bubble);
+    }
+
+    chatArea.appendChild(row);
+
+    updateChatLayout();
+    scrollToBottom();
 }
 
-function currentTime() {
-  const now = new Date();
-  return `${String(now.getHours()).padStart(2, "0")}.${String(
-    now.getMinutes()
-  ).padStart(2, "0")}`;
+function showTyping() {
+    if (!chatArea || $("#typingIndicator")) return;
+
+    const row = document.createElement("div");
+    row.id = "typingIndicator";
+    row.className = "message-row bot";
+
+    const avatar = document.createElement("div");
+    avatar.className = "avatar";
+    avatar.textContent = "🤖";
+
+    const bubble = document.createElement("div");
+    bubble.className = "message";
+
+    const typing = document.createElement("div");
+    typing.className = "typing";
+    typing.setAttribute("aria-label", t("loading"));
+
+    for (let i = 0; i < 3; i++) {
+        typing.appendChild(document.createElement("span"));
+    }
+
+    bubble.appendChild(typing);
+    row.append(avatar, bubble);
+    chatArea.appendChild(row);
+
+    updateChatLayout();
+    scrollToBottom();
 }
 
-// ===== Riwayat chat =====
+function removeTyping() {
+    $("#typingIndicator")?.remove();
+    updateChatLayout();
+}
+
+/* =====================================================
+   KIRIM PESAN
+===================================================== */
+async function sendMessage(message) {
+    const question = String(message ?? questionInput?.value ?? "").trim();
+
+    if (!question || isSending) return;
+
+    isSending = true;
+
+    if (sendButton) sendButton.disabled = true;
+    if (questionInput) questionInput.value = "";
+
+    renderMessage("user", question);
+    showTyping();
+    closeSidebar();
+
+    try {
+        const response = await fetch("/chat", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                message: question,
+                conversation_id: currentConversationId,
+                language: currentLanguage
+            })
+        });
+
+        let data;
+
+        try {
+            data = await response.json();
+        } catch (_) {
+            data = {};
+        }
+
+        removeTyping();
+
+        if (!response.ok) {
+            renderMessage(
+                "bot",
+                data.error || t("responseError")
+            );
+            return;
+        }
+
+        if (data.conversation_id != null) {
+            currentConversationId = data.conversation_id;
+        }
+
+        renderMessage(
+            "bot",
+            data.answer || data.response || t("emptyAnswer"),
+            data.time || getCurrentTime()
+        );
+
+        loadHistory();
+    } catch (error) {
+        removeTyping();
+        renderMessage("bot", t("connectionError"));
+        console.error("Kesalahan saat mengirim pesan:", error);
+    } finally {
+        isSending = false;
+
+        if (sendButton) sendButton.disabled = false;
+    }
+}
+
+chatForm?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    sendMessage(questionInput?.value);
+});
+
+suggestionList?.addEventListener("click", (event) => {
+    const button = event.target.closest(".suggestion");
+
+    if (button) {
+        sendMessage(button.textContent);
+    }
+});
+
+/* =====================================================
+   RIWAYAT CHAT
+   Sesuaikan URL ini dengan route yang tersedia di app.py.
+===================================================== */
 async function loadHistory() {
-  try {
-    const res = await fetch("/api/conversations");
-    const conversations = await res.json();
+    if (!historyList) return;
 
-    historyList.innerHTML = "";
-    conversations.forEach((conv) => {
-      // <button> (bukan <div>) supaya bisa dipilih lewat keyboard / screen reader
-      const item = document.createElement("button");
-      item.type = "button";
-      item.className = "history-item";
-      if (conv.id === currentConversationId) {
-        item.classList.add("active");
-        item.setAttribute("aria-current", "true");
-      }
-      item.textContent = conv.title;
-      item.title = conv.title; // judul penuh saat di-hover
-      item.addEventListener("click", () => openConversation(conv.id));
-      historyList.appendChild(item);
-    });
-  } catch (err) {
-    console.error("Gagal memuat riwayat:", err);
-  }
+    try {
+        const response = await fetch("/api/conversations");
+
+        if (!response.ok) return;
+
+        const result = await response.json();
+
+        const conversations = Array.isArray(result)
+            ? result
+            : result.conversations || [];
+
+        historyList.replaceChildren();
+
+        conversations.forEach((conversation) => {
+            const id = conversation.id ?? conversation.conversation_id;
+            const title = conversation.title
+                || conversation.name
+                || conversation.last_message
+                || "Percakapan";
+
+            const button = document.createElement("button");
+
+            button.type = "button";
+            button.className = "history-item";
+            button.textContent = title;
+            button.title = title;
+
+            if (String(id) === String(currentConversationId)) {
+                button.classList.add("active");
+            }
+
+            button.addEventListener("click", () => openConversation(id));
+
+            historyList.appendChild(button);
+        });
+    } catch (error) {
+        console.warn("Riwayat chat tidak dapat dimuat:", error);
+    }
 }
 
 async function openConversation(conversationId) {
-  try {
-    const res = await fetch(`/api/conversations/${conversationId}/messages`);
-    if (!res.ok) return;
-    const messages = await res.json();
+    if (conversationId == null) return;
 
-    currentConversationId = conversationId;
-    chatArea.innerHTML = "";
-    hideHeroIfNeeded();
+    try {
+        const response = await fetch(
+            `/api/conversations/${encodeURIComponent(conversationId)}/messages`
+        );
 
-    messages.forEach((m) =>
-      renderMessage(m.role, m.content, m.time, { scroll: false })
-    );
-    scrollChatToBottom();
+        if (!response.ok) {
+            console.warn("Endpoint pesan riwayat tidak tersedia.");
+            return;
+        }
 
-    // tandai item aktif di sidebar
-    document
-      .querySelectorAll(".history-item")
-      .forEach((el) => el.classList.remove("active"));
+        const result = await response.json();
+
+        const messages = Array.isArray(result)
+            ? result
+            : result.messages || [];
+
+        currentConversationId = conversationId;
+        chatArea.replaceChildren();
+
+        messages.forEach((message) => {
+            const role =
+                message.role === "user" || message.sender === "user"
+                    ? "user"
+                    : "bot";
+
+            renderMessage(
+                role,
+                message.content ?? message.message ?? "",
+                message.time ?? message.created_at ?? ""
+            );
+        });
+
+        updateChatLayout();
+        scrollToBottom();
+        closeSidebar();
+        loadHistory();
+    } catch (error) {
+        console.error("Gagal membuka percakapan:", error);
+    }
+}
+
+/* =====================================================
+   HOME / CHAT BARU
+===================================================== */
+function startNewChat() {
+    currentConversationId = null;
+
+    chatArea?.replaceChildren();
+
+    if (questionInput) {
+        questionInput.value = "";
+    }
+
+    removeTyping();
+    updateChatLayout();
+    renderSuggestions();
+    closeSidebar();
     loadHistory();
-
-    // Di layar sempit, drawer menutup otomatis setelah memilih percakapan
-    closeSidebar();
-  } catch (err) {
-    console.error("Gagal memuat percakapan:", err);
-  }
 }
 
-function startNewConversation() {
-  currentConversationId = null;
-  chatArea.innerHTML = "";
-  showHero();
-  renderSuggestions();
-  questionInput.value = "";
-  closeSidebar();
-  // Di HP, fokus otomatis akan memunculkan keyboard; hanya dilakukan di layar lebar
-  if (wideLayout.matches) questionInput.focus();
+$("#homeButton")?.addEventListener("click", startNewChat);
+
+/* =====================================================
+   VIEWPORT MOBILE
+===================================================== */
+function updateViewportHeight() {
+    const height = window.visualViewport?.height || window.innerHeight;
+
+    document.documentElement.style.setProperty(
+        "--app-height",
+        `${Math.round(height)}px`
+    );
 }
 
-// ===== Tinggi layar yang mengikuti keyboard virtual HP =====
-// Chrome Android sudah ditangani meta viewport (interactive-widget).
-// iOS Safari tidak menciutkan layout saat keyboard muncul, jadi tinggi
-// aplikasi disamakan dengan viewport visual supaya kolom input tetap
-// terlihat. Dilewati saat pengguna sedang pinch-zoom.
-function syncAppHeight() {
-  const vv = window.visualViewport;
-  if (!vv || vv.scale > 1.01) return;
+window.addEventListener("resize", updateViewportHeight);
 
-  const wasNearBottom = isNearBottom();
-  document.documentElement.style.setProperty(
-    "--app-height",
-    `${Math.round(vv.height)}px`
-  );
-  if (vv.offsetTop > 0) window.scrollTo(0, 0);
-  // Jaga pesan terbaru tetap terlihat saat keyboard muncul / hilang
-  if (wasNearBottom) scrollChatToBottom();
+window.visualViewport?.addEventListener(
+    "resize",
+    updateViewportHeight
+);
+
+/* =====================================================
+   INISIALISASI
+===================================================== */
+function initializeChatbot() {
+    loadLanguage();
+    applyLanguage(currentLanguage);
+
+    let theme = "light";
+
+    try {
+        const savedTheme = localStorage.getItem(THEME_KEY);
+
+        if (savedTheme === "dark" || savedTheme === "light") {
+            theme = savedTheme;
+        } else {
+            theme = window.matchMedia("(prefers-color-scheme: dark)").matches
+                ? "dark"
+                : "light";
+        }
+    } catch (_) {}
+
+    applyTheme(theme);
+    updateViewportHeight();
+    updateChatLayout();
+    loadHistory();
 }
 
-// ===== Event listeners (dipasang SEKALI saat halaman dimuat) =====
-sendButton.addEventListener("click", () => sendMessage());
-
-questionInput.addEventListener("keydown", (e) => {
-  // isComposing: jangan kirim saat Enter dipakai untuk memilih saran keyboard HP
-  if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
-    e.preventDefault();
-    sendMessage();
-  }
-});
-
-// Satu listener untuk semua tombol rekomendasi (tombolnya dibuat ulang setiap Home)
-if (suggestionList) {
-  suggestionList.addEventListener("click", (e) => {
-    const btn = e.target.closest(".suggestion");
-    if (btn) sendMessage(btn.textContent);
-  });
-}
-
-document.querySelectorAll(".theme-toggle").forEach((btn) => {
-  btn.addEventListener("click", toggleTheme);
-});
-
-// Ikuti pengaturan sistem selama pengguna belum memilih tema sendiri
-systemDarkQuery.addEventListener("change", (e) => {
-  if (!getStoredTheme()) applyTheme(e.matches ? "dark" : "light");
-});
-
-if (homeButton) {
-  homeButton.addEventListener("click", startNewConversation);
-}
-
-if (historyButton) {
-  historyButton.addEventListener("click", loadHistory);
-}
-
-// Drawer: tombol menu, tombol tutup, klik overlay, tombol Escape
-menuButton.addEventListener("click", () => {
-  if (isDrawerOpen()) closeSidebar();
-  else openSidebar();
-});
-sidebarClose.addEventListener("click", closeSidebar);
-sidebarOverlay.addEventListener("click", closeSidebar);
-
-document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && isDrawerOpen()) {
-    e.preventDefault();
-    closeSidebar();
-  }
-});
-
-wideLayout.addEventListener("change", handleLayoutChange);
-
-if (window.visualViewport) {
-  window.visualViewport.addEventListener("resize", syncAppHeight);
-  window.visualViewport.addEventListener("scroll", syncAppHeight);
-  syncAppHeight();
-}
-
-// ===== Inisialisasi saat halaman dimuat =====
-applyTheme(currentTheme()); // sinkronkan label tombol + warna bar status
-renderSuggestions();
-
-document.addEventListener("DOMContentLoaded", () => {
-  loadHistory();
-});
+initializeChatbot();

@@ -5,92 +5,168 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
     <meta name="theme-color" content="#ffffff">
-    <link rel="icon" type="image/png" href="{{ url_for('static', filename='image/logo1.png') }}">
+
+    <link rel="icon" type="image/png"
+          href="{{ url_for('static', filename='image/logo1.png') }}">
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='css/style.css') }}">
+
     <title>Kantor Imigrasi Chatbot</title>
-</head>
-</html>
 
+    <script>
+    (() => {
+        try {
+            const savedTheme = localStorage.getItem("chatbot-theme");
+            document.documentElement.dataset.theme =
+                savedTheme === "dark" || savedTheme === "light"
+                    ? savedTheme
+                    : (
+                        window.matchMedia("(prefers-color-scheme: dark)").matches
+                            ? "dark" : "light"
+                    );
 
-<script>
-(function () {
-  var theme = null;
-  try { theme = localStorage.getItem("chatbot-theme"); } catch (e) {}
-  if (theme !== "dark" && theme !== "light") {
-    theme = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-  }
-  document.documentElement.setAttribute("data-theme", theme);
-})();
-</script>
-<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+            document.documentElement.lang =
+                localStorage.getItem("chatbot-language") === "en"
+                    ? "en" : "id";
+        } catch (_) {
+            document.documentElement.dataset.theme = "light";
+            document.documentElement.lang = "id";
+        }
+    })();
+    </script>
 </head>
+
 <body>
 <div class="app" id="app">
 
-    <!-- Lapisan gelap di belakang drawer (hanya muncul di layar sempit) -->
-    <div class="sidebar-overlay" id="sidebarOverlay" aria-hidden="true"></div>
+    <button type="button" class="sidebar-overlay" id="sidebarOverlay"
+            aria-label="Tutup menu" tabindex="-1"></button>
 
     <aside class="sidebar" id="sidebar" aria-label="Menu dan riwayat chat">
         <div class="sidebar-header">
-            <button type="button" class="icon-button sidebar-close" id="sidebarClose" aria-label="Tutup menu">
-                <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6L6 18"/></svg>
+            <button type="button" class="icon-button sidebar-close"
+                    id="sidebarClose" aria-label="Tutup menu">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M6 6l12 12M18 6L6 18"/>
+                </svg>
             </button>
-            <img src="{{ url_for('static', filename='image/logo1.png') }}" alt="Logo Kantor Imigrasi" class="sidebar-logo">
-            <div class="title">Kantor Imigrasi<br>Chatbot</div>
+
+            <img
+                src="{{ url_for('static', filename='image/logo1.png') }}"
+                alt="Logo Kantor Imigrasi"
+                class="sidebar-logo">
+
+            <div class="sidebar-title" id="sidebarTitle">
+                Kantor Imigrasi<br>Chatbot
+            </div>
         </div>
 
         <nav class="sidebar-nav" aria-label="Navigasi">
-            <button type="button" class="sidebar-button" id="homeButton">Home</button>
+            <button type="button" class="sidebar-button" id="homeButton">
+                <span id="homeLabel">Home</span>
+            </button>
         </nav>
 
         <div class="history-title" id="historyTitle">Riwayat Chat</div>
-        <div class="history-list" id="historyList" aria-labelledby="historyTitle"></div>
+        <div class="history-list" id="historyList"
+             aria-labelledby="historyTitle"></div>
 
         <div class="sidebar-footer">
-            <button type="button" class="sidebar-button theme-toggle" aria-label="Ganti ke mode gelap">
-                <svg class="icon-moon" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-                <svg class="icon-sun" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+            <button type="button" class="sidebar-button theme-toggle"
+                    id="sidebarThemeButton">
+                <svg class="theme-moon" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                </svg>
+                <svg class="theme-sun" viewBox="0 0 24 24" aria-hidden="true">
+                    <circle cx="12" cy="12" r="4"/>
+                    <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l-1.41-1.41M17.66 6.34l1.41-1.41"/>
+                </svg>
                 <span class="theme-toggle-label">Mode gelap</span>
             </button>
         </div>
     </aside>
 
     <main class="main is-empty" id="main">
-
-        <!-- Header ringkas: hanya tampil di layar sempit (di layar lebar sidebar sudah permanen) -->
         <header class="chat-header">
-            <button type="button" class="icon-button menu-button" id="menuButton" aria-label="Buka menu" aria-controls="sidebar" aria-expanded="false">
-                <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+            <button type="button" class="icon-button menu-button"
+                    id="menuButton" aria-label="Buka menu"
+                    aria-controls="sidebar" aria-expanded="false">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M4 6h16M4 12h16M4 18h16"/>
+                </svg>
             </button>
-            <img src="{{ url_for('static', filename='image/logo1.png') }}" alt="" class="chat-header-logo">
-            <span class="chat-header-title">Kantor Imigrasi Chatbot</span>
-            <button type="button" class="icon-button theme-toggle" aria-label="Ganti ke mode gelap">
-                <svg class="icon-moon" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-                <svg class="icon-sun" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
-            </button>
+
+            <img
+                src="{{ url_for('static', filename='image/logo1.png') }}"
+                alt="" class="chat-header-logo">
+
+            <div class="chat-header-title" id="headerTitle">
+                Kantor Imigrasi Chatbot
+            </div>
+
+            <div class="chat-header-actions">
+                <div class="language-switch" role="group"
+                     aria-label="Choose language">
+                    <button type="button" id="languageId"
+                            class="language-option"
+                            aria-label="Bahasa Indonesia"
+                            aria-pressed="true">ID</button>
+                    <button type="button" id="languageEn"
+                            class="language-option"
+                            aria-label="English"
+                            aria-pressed="false">EN</button>
+                </div>
+
+                <button type="button" class="icon-button theme-toggle"
+                        id="headerThemeButton" aria-label="Ganti tema">
+                    <svg class="theme-moon" viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                    </svg>
+                    <svg class="theme-sun" viewBox="0 0 24 24" aria-hidden="true">
+                        <circle cx="12" cy="12" r="4"/>
+                        <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l-1.41-1.41M17.66 6.34l-1.41-1.41"/>
+                    </svg>
+                </button>
+            </div>
         </header>
 
-        <div id="heroSection" class="hero">
-            <h1>HALO PENGUNJUNG</h1>
-            <h3>Apa yang bisa saya bantu hari ini?</h3>
-        </div>
+        <section class="main-content" id="mainContent">
+            <div class="hero" id="heroSection">
+                <h1 id="heroHeading">HALO PENGUNJUNG</h1>
+                <h2 id="heroSubtitle">Apa yang bisa saya bantu hari ini?</h2>
+            </div>
 
-        <div id="suggestionSection" class="suggestion-section">
-            <div class="suggestion-title">Rekomendasi Pertanyaan</div>
-            <!-- Diisi script.js: beberapa pertanyaan acak dari daftar SUGGESTION_POOL -->
-            <div class="suggestions" id="suggestionList" role="group" aria-label="Contoh pertanyaan"></div>
-        </div>
+            <section class="suggestion-section" id="suggestionSection">
+                <div class="suggestion-title" id="suggestionTitle">
+                    Rekomendasi Pertanyaan
+                </div>
+                <div class="suggestions" id="suggestionList"
+                     role="group" aria-label="Contoh pertanyaan"></div>
+            </section>
 
-        <div id="chatArea" class="chat-area" role="log" aria-label="Percakapan"></div>
+            <section class="chat-area" id="chatArea"
+                     role="log" aria-live="polite"
+                     aria-label="Percakapan"></section>
 
-        <div class="input-box">
-            <input id="question" type="text" placeholder="Masukkan pertanyaan anda disini" aria-label="Pertanyaan Anda" autocomplete="off" enterkeyhint="send">
-            <button type="button" id="sendButton" aria-label="Kirim pesan">➜</button>
-        </div>
+            <form class="input-box" id="chatForm">
+                <input id="question" name="message" type="text"
+                       placeholder="Masukkan pertanyaan Anda di sini"
+                       aria-label="Pertanyaan Anda"
+                       autocomplete="off" enterkeyhint="send"
+                       maxlength="5000">
 
+                <button type="submit" id="sendButton"
+                        aria-label="Kirim pesan">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M5 12h14M13 5l7 7-7 7"/>
+                    </svg>
+                </button>
+            </form>
+        </section>
     </main>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-<script src="{{ url_for('static', filename='js/script.js') }}"></script>
+<script src="{{ url_for('static', filename='js/script.js') }}" defer></script>
 </body>
 </html>
