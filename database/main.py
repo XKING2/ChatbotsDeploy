@@ -17,7 +17,10 @@ from database.entity_builder import (
     build_subtopic_embedding_text
 )
 
-from database.alias_generator import generate_aliases_batch
+from database.alias_generator import (
+    generate_aliases_batch,
+    generate_subtopic_aliases_batch
+)
 
 from database.heading_prompt import (
     build_heading_description,
@@ -122,26 +125,40 @@ def process_chunks(chunks):
 
 
 def load_aliases(entities):
+    """Memuat alias khusus entity; alias subtopic tidak dicampur."""
     aliases_by_entity = {}
-
     new_entities = []
 
     for item in entities:
-
         entity_id = item["entity_id"]
         entity = item["entity"]
 
-        data = get_aliases(entity_id)
+        data = get_aliases(entity_id) or {}
+        metadatas = data.get("metadatas") or []
 
-        aliases = [
-            metadata.get("alias")
-            for metadata in data["metadatas"]
-            if metadata.get("alias")
-        ]
+        aliases = []
+        for metadata in metadatas:
+            if not isinstance(metadata, dict):
+                continue
+
+            # Alias subtopic punya subtopic_id atau alias_scope="subtopic".
+            if metadata.get("alias_scope") == "subtopic":
+                continue
+            if metadata.get("subtopic_id"):
+                continue
+
+            alias = metadata.get("alias")
+            if alias:
+                aliases.append(alias)
+
+        # Hindari duplikasi tanpa membedakan kapitalisasi.
+        aliases = list(dict.fromkeys(
+            alias.strip() for alias in aliases
+            if isinstance(alias, str) and alias.strip()
+        ))
 
         if aliases:
             aliases_by_entity[entity] = aliases
-
         else:
             new_entities.append(entity)
 
@@ -149,90 +166,125 @@ def load_aliases(entities):
         f"Entity sudah memiliki alias : "
         f"{len(entities) - len(new_entities)}"
     )
-
     print(
         f"Entity perlu generate alias  : "
         f"{len(new_entities)}"
     )
 
     if new_entities:
-
-        generated = generate_aliases_batch(
-            new_entities
-        ) or {}
+        generated = generate_aliases_batch(new_entities) or {}
 
         for entity in new_entities:
-
-            aliases = generated.get(
-                entity,
-                []
-            )
-
+            aliases = generated.get(entity, [])
             if not isinstance(aliases, list):
                 aliases = []
 
-            aliases_by_entity[entity] = aliases
+            aliases_by_entity[entity] = list(dict.fromkeys(
+                alias.strip() for alias in aliases
+                if isinstance(alias, str) and alias.strip()
+            ))
 
     return aliases_by_entity
 
 
-def process_entities(entities):
+def load_subtopic_aliases(entities):
+    """Memuat alias subtopic yang sudah ada dan generate untuk yang belum ada."""
+    aliases_by_subtopic = {}
+    pending = []
+    existing_alias_count = 0
 
+    for item in entities:
+        entity_id = item["entity_id"]
+        entity = item["entity"]
+
+        data = get_aliases(entity_id) or {}
+        metadatas = data.get("metadatas") or []
+
+        for subtopic_data in item["subtopics"].values():
+            subtopic_id = subtopic_data["subtopic_id"]
+            subtopic = subtopic_data["subtopic"]
+            key = f"{entity_id}::{subtopic_id}"
+
+            aliases = []
+            for metadata in metadatas:
+                if not isinstance(metadata, dict):
+                    continue
+                if str(metadata.get("subtopic_id", "")) != str(subtopic_id):
+                    continue
+
+                alias = metadata.get("alias")
+                if alias:
+                    aliases.append(alias)
+
+            aliases = list(dict.fromkeys(
+                alias.strip() for alias in aliases
+                if isinstance(alias, str) and alias.strip()
+            ))
+
+            aliases_by_subtopic[key] = aliases
+            if aliases:
+                existing_alias_count += 1
+            else:
+                pending.append({
+                    "entity_id": entity_id,
+                    "entity": entity,
+                    "subtopic_id": subtopic_id,
+                    "subtopic": subtopic,
+                })
+
+    print(f"Subtopic sudah memiliki alias : {existing_alias_count}")
+    print(f"Subtopic perlu generate alias  : {len(pending)}")
+
+    if pending:
+        generated = generate_subtopic_aliases_batch(pending) or {}
+        for item in pending:
+            key = f'{item["entity_id"]}::{item["subtopic_id"]}'
+            aliases = generated.get(key, [])
+            if not isinstance(aliases, list):
+                aliases = []
+
+            aliases_by_subtopic[key] = list(dict.fromkeys(
+                alias.strip() for alias in aliases
+                if isinstance(alias, str) and alias.strip()
+            ))
+
+    return aliases_by_subtopic
+
+
+def process_entities(entities):
     existing = get_existing_entity_hashes()
 
-    aliases_by_entity = load_aliases(
-        entities
-    )
+    aliases_by_entity = load_aliases(entities)
+    aliases_by_subtopic = load_subtopic_aliases(entities)
 
     entity_count = 0
     subtopic_count = 0
     alias_count = 0
+    subtopic_alias_count = 0
 
     for item in entities:
-
         entity_id = item["entity_id"]
         entity = item["entity"]
 
-        aliases = aliases_by_entity.get(
-            entity,
-            []
-        )
-
-        subtopics = list(
-            item["subtopics"].values()
-        )
-
-        subtopic_names = [
-            x["subtopic"]
-            for x in subtopics
-        ]
+        aliases = aliases_by_entity.get(entity, [])
+        subtopics = list(item["subtopics"].values())
+        subtopic_names = [x["subtopic"] for x in subtopics]
 
         # ====================================================
         # ENTITY EMBEDDING
         # ====================================================
-
         entity_text = build_entity_embedding_text(
             entity,
             aliases,
             subtopic_names
         )
-
-        entity_hash = compute_hash(
-            entity_text
-        )
+        entity_hash = compute_hash(entity_text)
 
         if existing.get(entity_id) != entity_hash:
-
-            print(
-                f"\nENTITY: {entity}"
-            )
-
-            embedding = embed(
-                entity_text
-            )
+            print(f"\nENTITY: {entity}")
+            embedding = embed(entity_text)
 
             if embedding is not None:
-
                 add_entity_item(
                     "entity",
                     entity_id,
@@ -243,46 +295,18 @@ def process_entities(entities):
                     subtopic_count=len(subtopics),
                     alias_count=len(aliases)
                 )
-
                 existing[entity_id] = entity_hash
-
                 entity_count += 1
 
         # ====================================================
-        # SUBTOPIC EMBEDDING
+        # SUBTOPIC EMBEDDING + SUBTOPIC ALIASES
         # ====================================================
-
         for subtopic_data in subtopics:
+            subtopic_id = subtopic_data["subtopic_id"]
+            subtopic = subtopic_data["subtopic"]
 
-            subtopic_id = (
-                subtopic_data["subtopic_id"]
-            )
-
-            subtopic = (
-                subtopic_data["subtopic"]
-            )
-
-            # ------------------------------------------------
-            # DESCRIPTION
-            # ------------------------------------------------
-
-            description = build_heading_description(
-                subtopic,
-                entity
-            )
-
-            # ------------------------------------------------
-            # EXAMPLES
-            # ------------------------------------------------
-
-            examples = build_heading_examples(
-                subtopic,
-                entity
-            )
-
-            # ------------------------------------------------
-            # EMBEDDING TEXT
-            # ------------------------------------------------
+            description = build_heading_description(subtopic, entity)
+            examples = build_heading_examples(subtopic, entity)
 
             subtopic_text = build_subtopic_embedding_text(
                 entity=entity,
@@ -290,145 +314,103 @@ def process_entities(entities):
                 description=description,
                 examples=examples
             )
+            subtopic_hash = compute_hash(subtopic_text)
 
-            # ------------------------------------------------
-            # HASH
-            # ------------------------------------------------
+            if existing.get(subtopic_id) != subtopic_hash:
+                print(f"\nSUBTOPIC: {subtopic}")
+                print(f"ENTITY  : {entity}")
+                print("\n--- DESCRIPTION ---")
+                print(description)
+                print("\n--- EXAMPLES ---")
+                for example in examples:
+                    print(f"- {example}")
+                print("\n--- EMBEDDING TEXT ---")
+                print(subtopic_text)
+                print("--- END EMBEDDING TEXT ---")
 
-            subtopic_hash = compute_hash(
-                subtopic_text
-            )
+                embedding = embed(subtopic_text)
+                if embedding is not None:
+                    add_entity_item(
+                        "subtopic",
+                        subtopic_id,
+                        entity_id,
+                        subtopic_text,
+                        embedding,
+                        subtopic_hash,
+                        description=description,
+                        examples=" | ".join(examples)
+                    )
+                    existing[subtopic_id] = subtopic_hash
+                    subtopic_count += 1
+                    print("Subtopic berhasil disimpan.")
 
-            # ------------------------------------------------
-            # CHECK EXISTING
-            # ------------------------------------------------
+            # Alias heading/subtopic di-embedding dengan konteks entity.
+            subtopic_key = f"{entity_id}::{subtopic_id}"
+            subtopic_aliases = aliases_by_subtopic.get(subtopic_key, [])
 
-            if existing.get(subtopic_id) == subtopic_hash:
+            for alias in subtopic_aliases:
+                alias = alias.strip()
+                if not alias:
+                    continue
 
-                continue
-
-            print(
-                f"\nSUBTOPIC: {subtopic}"
-            )
-
-            print(
-                f"ENTITY  : {entity}"
-            )
-
-            print(
-                "\n--- DESCRIPTION ---"
-            )
-
-            print(
-                description
-            )
-
-            print(
-                "\n--- EXAMPLES ---"
-            )
-
-            for example in examples:
-                print(
-                    f"- {example}"
+                # ID stabil dan terpisah dari alias entity.
+                alias_hash_part = compute_hash(alias)[:16]
+                current_id = (
+                    f"{entity_id}::subtopic::{subtopic_id}"
+                    f"::alias::{alias_hash_part}"
                 )
 
-            print(
-                "\n--- EMBEDDING TEXT ---"
-            )
-
-            print(
-                subtopic_text
-            )
-
-            print(
-                "--- END EMBEDDING TEXT ---"
-            )
-
-            # ------------------------------------------------
-            # CREATE EMBEDDING
-            # ------------------------------------------------
-
-            embedding = embed(
-                subtopic_text
-            )
-
-            if embedding is None:
-
-                print(
-                    "Embedding gagal."
+                alias_text = (
+                    f"Layanan\n{entity}\n\n"
+                    f"Heading\n{subtopic}\n\n"
+                    f"Alias heading\n{alias}"
                 )
+                alias_hash = compute_hash(alias_text)
 
-                continue
+                if existing.get(current_id) == alias_hash:
+                    continue
 
-            # ------------------------------------------------
-            # SAVE TO CHROMADB
-            # ------------------------------------------------
+                print(f"\nSUBTOPIC ALIAS: {alias}")
+                embedding = embed(alias_text)
+                if embedding is None:
+                    print("Embedding alias subtopic gagal.")
+                    continue
 
-            add_entity_item(
-                "subtopic",
-                subtopic_id,
-                entity_id,
-                subtopic_text,
-                embedding,
-                subtopic_hash,
-                description=description,
-                examples=" | ".join(examples)
-            )
-
-            existing[subtopic_id] = (
-                subtopic_hash
-            )
-
-            subtopic_count += 1
-
-            print(
-                "Subtopic berhasil disimpan."
-            )
+                add_entity_item(
+                    "alias",
+                    current_id,
+                    entity_id,
+                    alias,
+                    embedding,
+                    alias_hash,
+                    alias_scope="subtopic",
+                    subtopic_id=subtopic_id,
+                    subtopic=subtopic,
+                    entity=entity,
+                    embedding_text=alias_text
+                )
+                existing[current_id] = alias_hash
+                subtopic_alias_count += 1
 
         # ====================================================
-        # ALIAS EMBEDDING
+        # ENTITY ALIAS EMBEDDING
         # ====================================================
-
         for alias in aliases:
-
             alias = alias.strip()
-
             if not alias:
                 continue
 
-            current_id = alias_id(
-                entity_id,
-                alias
-            )
-
-            alias_text = (
-                f"Layanan\n"
-                f"{entity}\n\n"
-                f"Nama lain\n"
-                f"{alias}"
-            )
-
-            alias_hash = compute_hash(
-                alias_text
-            )
+            current_id = alias_id(entity_id, alias)
+            alias_text = f"Layanan\n{entity}\n\nNama lain\n{alias}"
+            alias_hash = compute_hash(alias_text)
 
             if existing.get(current_id) == alias_hash:
                 continue
 
-            print(
-                f"\nALIAS: {alias}"
-            )
-
-            embedding = embed(
-                alias_text
-            )
-
+            print(f"\nALIAS: {alias}")
+            embedding = embed(alias_text)
             if embedding is None:
-
-                print(
-                    "Embedding gagal."
-                )
-
+                print("Embedding alias gagal.")
                 continue
 
             add_entity_item(
@@ -437,21 +419,20 @@ def process_entities(entities):
                 entity_id,
                 alias,
                 embedding,
-                alias_hash
+                alias_hash,
+                alias_scope="entity",
+                entity=entity,
+                embedding_text=alias_text
             )
-
-            existing[current_id] = (
-                alias_hash
-            )
-
+            existing[current_id] = alias_hash
             alias_count += 1
 
     return (
         entity_count,
         subtopic_count,
-        alias_count
+        alias_count,
+        subtopic_alias_count
     )
-
 
 def main():
 
@@ -596,7 +577,11 @@ def main():
     )
 
     print(
-        f"Alias    : {counts[2]}"
+        f"Alias entity   : {counts[2]}"
+    )
+
+    print(
+        f"Alias subtopic : {counts[3]}"
     )
 
     # ========================================================

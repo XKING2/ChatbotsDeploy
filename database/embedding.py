@@ -1,5 +1,5 @@
-import time
 
+import time
 from google import genai
 
 from config import (
@@ -8,32 +8,28 @@ from config import (
     EMBEDDING_MODEL_1,
 )
 
-from LLM.embedding_service import create_embedding
-
 
 EMBEDDING_ROUTES = [
     {
         "name": "Primary",
         "api_key": GEMINI_API_KEY_1,
-        "model": EMBEDDING_MODEL_1
+        "model": EMBEDDING_MODEL_1,
     },
     {
         "name": "Backup API Key",
         "api_key": GEMINI_API_KEY_2,
-        "model": EMBEDDING_MODEL_1
-    }
+        "model": EMBEDDING_MODEL_1,
+    },
 ]
-
 
 MAX_RETRY = 2
 RETRY_DELAY = 5
 
-
-# ============================================================
-# ACTIVE ROUTE
-# ============================================================
+# Primary akan diuji kembali setelah jeda ini.
+PRIMARY_COOLDOWN = 60
 
 active_route_index = 0
+primary_retry_after = 0.0
 
 
 def get_active_route():
@@ -41,207 +37,119 @@ def get_active_route():
 
 
 def switch_to_backup():
-    global active_route_index
+    global active_route_index, primary_retry_after
 
-    if active_route_index == 0:
+    active_route_index = 1
+    primary_retry_after = time.monotonic() + PRIMARY_COOLDOWN
 
-        active_route_index = 1
-
-        print(
-            "\n=================================================="
-        )
-
-        print(
-            "PRIMARY GAGAL"
-        )
-
-        print(
-            "Beralih ke BACKUP API KEY"
-        )
-
-        print(
-            "Backup akan digunakan untuk request berikutnya."
-        )
-
-        print(
-            "=================================================="
-        )
-
-        return True
-
-    return False
-
-
-# ============================================================
-# CREATE EMBEDDING
-# ============================================================
-
-def create_embedding(text):
-
-    global active_route_index
-
-    route_index = active_route_index
-
-    while route_index < len(EMBEDDING_ROUTES):
-
-        route = EMBEDDING_ROUTES[route_index]
-
-        api_key = route["api_key"]
-        model = route["model"]
-        route_name = route["name"]
-
-        if not api_key:
-
-            print(
-                f"\n[SKIP] {route_name}"
-            )
-
-            print(
-                "API key tidak tersedia."
-            )
-
-            if route_index == 0:
-
-                switch_to_backup()
-
-                route_index = active_route_index
-
-                continue
-
-            return None
-
-        if not model:
-
-            print(
-                f"\n[SKIP] {route_name}"
-            )
-
-            print(
-                "Model tidak tersedia."
-            )
-
-            if route_index == 0:
-
-                switch_to_backup()
-
-                route_index = active_route_index
-
-                continue
-
-            return None
-
-        print(
-            f"\nEmbedding menggunakan: "
-            f"{route_name} | {model}"
-        )
-
-        client = genai.Client(
-            api_key=api_key
-        )
-
-        # ====================================================
-        # RETRY ROUTE AKTIF
-        # ====================================================
-
-        for attempt in range(1, MAX_RETRY + 1):
-
-            try:
-
-                print(
-                    f"[TRY] {route_name} "
-                    f"percobaan {attempt}/{MAX_RETRY}"
-                )
-
-                response = client.models.embed_content(
-                    model=model,
-                    contents=text
-                )
-
-                if not response.embeddings:
-
-                    raise Exception(
-                        "Response embedding kosong."
-                    )
-
-                print(
-                    f"[SUCCESS] "
-                    f"{route_name} berhasil."
-                )
-
-                return response.embeddings[0].values
-
-            except Exception as e:
-
-                error_message = str(e)
-
-                print(
-                    f"\n[ERROR] {route_name}"
-                )
-
-                print(
-                    f"Percobaan "
-                    f"{attempt}/{MAX_RETRY}"
-                )
-
-                print(
-                    error_message
-                )
-
-                # ============================================
-                # MASIH ADA RETRY
-                # ============================================
-
-                if attempt < MAX_RETRY:
-
-                    print(
-                        f"Mencoba kembali dalam "
-                        f"{RETRY_DELAY} detik..."
-                    )
-
-                    time.sleep(
-                        RETRY_DELAY
-                    )
-
-                    continue
-
-                # ============================================
-                # RETRY HABIS
-                # ============================================
-
-                print(
-                    f"\n[FAILED] "
-                    f"{route_name} gagal "
-                    f"{MAX_RETRY} kali."
-                )
-
-        # ====================================================
-        # PRIMARY GAGAL -> BACKUP
-        # ====================================================
-
-        if route_index == 0:
-
-            switched = switch_to_backup()
-
-            if switched:
-
-                route_index = active_route_index
-
-                continue
-
-        # ====================================================
-        # BACKUP JUGA GAGAL
-        # ====================================================
-
-        print(
-            "\n[FATAL] "
-            "Semua jalur embedding gagal."
-        )
-
-        return None
-
+    print("\n[ROUTE] Primary gagal.")
+    print("[ROUTE] Beralih ke Backup API Key.")
     print(
-        "\n[FATAL] "
-        "Tidak ada route embedding yang tersedia."
+        f"[ROUTE] Primary akan dicoba kembali "
+        f"setelah {PRIMARY_COOLDOWN} detik."
     )
 
+
+def switch_to_primary():
+    global active_route_index
+
+    active_route_index = 0
+
+    print("\n[ROUTE] Primary berhasil kembali.")
+    print("[ROUTE] Request berikutnya menggunakan Primary.")
+
+
+def request_embedding(route, text):
+    """Mencoba satu route dengan retry terbatas."""
+    api_key = route["api_key"]
+    model = route["model"]
+
+    if not api_key or not model:
+        print(f"[SKIP] {route['name']}: API key/model kosong.")
+        return None
+
+    try:
+        client = genai.Client(api_key=api_key)
+    except Exception as exc:
+        print(f"[ERROR] Gagal membuat client {route['name']}: {exc}")
+        return None
+
+    for attempt in range(1, MAX_RETRY + 1):
+        try:
+            print(
+                f"[TRY] {route['name']} "
+                f"{attempt}/{MAX_RETRY}"
+            )
+
+            response = client.models.embed_content(
+                model=model,
+                contents=text,
+            )
+
+            if not response.embeddings:
+                raise ValueError("Response embedding kosong.")
+
+            values = response.embeddings[0].values
+
+            if values is None:
+                raise ValueError("Vektor embedding kosong.")
+
+            print(f"[SUCCESS] {route['name']}")
+            return values
+
+        except Exception as exc:
+            print(
+                f"[ERROR] {route['name']} "
+                f"{attempt}/{MAX_RETRY}: {exc}"
+            )
+
+            if attempt < MAX_RETRY:
+                time.sleep(RETRY_DELAY)
+
+    return None
+
+
+def create_embedding(text):
+    global active_route_index, primary_retry_after
+
+    # Jika backup sedang aktif, uji Primary setelah cooldown.
+    if active_route_index == 1:
+        if time.monotonic() >= primary_retry_after:
+            print("[CHECK] Mencoba kembali API key Primary.")
+
+            result = request_embedding(
+                EMBEDDING_ROUTES[0],
+                text,
+            )
+
+            if result is not None:
+                switch_to_primary()
+                return result
+
+            # Primary masih gagal; jadwalkan pengujian berikutnya.
+            primary_retry_after = (
+                time.monotonic() + PRIMARY_COOLDOWN
+            )
+            print("[ROUTE] Primary belum pulih. Tetap memakai Backup.")
+
+    # Coba route yang sedang aktif.
+    route = EMBEDDING_ROUTES[active_route_index]
+    result = request_embedding(route, text)
+
+    if result is not None:
+        return result
+
+    # Jika Primary gagal, langsung coba Backup.
+    if active_route_index == 0:
+        switch_to_backup()
+
+        backup_result = request_embedding(
+            EMBEDDING_ROUTES[1],
+            text,
+        )
+
+        if backup_result is not None:
+            return backup_result
+
+    print("[FATAL] Semua jalur embedding gagal.")
     return None

@@ -1,36 +1,60 @@
-import os
-from dotenv import load_dotenv
-from google import genai
+"""Bandingkan skor alias yang tersimpan dengan skor bila alias di-embed POLOS.
 
-load_dotenv(override=True)
+Tujuan: memastikan apakah bungkus teks ("Layanan / <entity> / Nama lain / <alias>")
+pada embedding alias mengencerkan makna alias dan menurunkan skor.
 
-api_key = os.getenv("GEMINI_API_KEY")
-model = os.getenv("EMBEDDING_MODEL_1")
+  python uji_embedding_alias.py "Apa saja dokumen yang harus dibawa untuk mengurus Affidavit"
 
-if not api_key:
-    raise RuntimeError("GEMINI_API_KEY tidak terbaca dari .env")
+Biaya: 1 embedding query + 1 embedding per alias yang diuji (default 8).
+"""
+import math
+import sys
 
-if not model:
-    raise RuntimeError("EMBEDDING_MODEL_1 tidak terbaca dari .env")
+from database.embedding import create_embedding
+from retrival.retrieval_pipeline import RetrievalPipeline
+from userquery.query_embedding import create_query_embedding
+from userquery.query_normalizer import normalize_query
 
-client = genai.Client(api_key=api_key)
+HOW_MANY = 8
 
-try:
-    result = client.models.embed_content(
-        model=model,
-        contents="Apa itu Golden Visa Indonesia?",
-    )
 
-    if not result.embeddings:
-        raise RuntimeError("API tidak mengembalikan embedding")
+def cosine(a, b):
+    dot = sum(x * y for x, y in zip(a, b))
+    na = math.sqrt(sum(x * x for x in a))
+    nb = math.sqrt(sum(y * y for y in b))
+    return dot / (na * nb) if na and nb else 0.0
 
-    vector = result.embeddings[0].values
 
-    print("Embedding berhasil.")
-    print("Model:", model)
-    print("Dimensi vektor:", len(vector))
+def main():
+    if len(sys.argv) < 2:
+        print('Pemakaian: python uji_embedding_alias.py "<pertanyaan>"')
+        return
+    question = " ".join(sys.argv[1:])
+    result = RetrievalPipeline().retrieve(question)
+    hits = result.get("alias_hits", [])[:HOW_MANY]
+    if not hits:
+        print("Tidak ada alias hit.")
+        return
 
-except Exception as error:
-    print("Embedding gagal.")
-    print("Jenis error:", type(error).__name__)
-    print("Detail:", error)
+    q_emb = create_query_embedding(normalize_query(question))
+    print(f"Question: {question}\n")
+    print(f"{'tersimpan':>10} {'polos':>8} {'selisih':>8}  alias  ->  entity | subtopik")
+    gains = []
+    for hit in hits:
+        raw = create_embedding(hit["alias"])
+        if raw is None:
+            print(f"{hit['score']:>10.4f} {'gagal':>8}  {hit['alias']!r}")
+            continue
+        plain = cosine(q_emb, raw)
+        gains.append(plain - hit["score"])
+        print(
+            f"{hit['score']:>10.4f} {plain:>8.4f} {plain - hit['score']:>+8.4f}  "
+            f"{hit['alias'][:48]!r} -> {(hit.get('entity') or '')[:28]} | {(hit.get('subtopic') or '')[:28]}"
+        )
+    if gains:
+        print(f"\nRata-rata selisih (polos - tersimpan): {sum(gains) / len(gains):+.4f}")
+        print("Selisih positif konsisten = bungkus teks mengencerkan alias.")
+
+
+if __name__ == "__main__":
+    main()

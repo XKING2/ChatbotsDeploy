@@ -83,18 +83,15 @@ def format_context(retrieval_result):
             except (TypeError, ValueError):
                 score = None
 
-            normalized.append({
-                "entity": item.get("entity"),
-                "entity_id": item.get("entity_id"),
+            # Hanya field yang berguna bagi LLM. id, skor, dan chunk_index
+            # tidak membantu menjawab dan hanya memperbesar prompt.
+            entry = {
                 "subtopic": item.get("subtopic"),
-                "subtopic_id": item.get("subtopic_id"),
-                "category": item.get("category"),
                 "source": item.get("document") or item.get("source"),
                 "page": _page_value(item),
-                "chunk_index": item.get("chunk_index"),
-                "similarity_score": score,
                 "content": content,
-            })
+            }
+            normalized.append({k: v for k, v in entry.items() if v not in (None, "")})
 
         # relevant_chunks is already in reading order (subtopic chunks by
         # chunk_index); re-sorting by score would scramble multi-part content.
@@ -107,14 +104,14 @@ def format_context(retrieval_result):
         payload = {
             "found": bool(normalized),
             "resolved_entity": context_meta.get("entity"),
-            "resolved_entity_id": resolved_entity_id,
             "contexts": normalized,
         }
         if not normalized:
             payload["message"] = (
                 "Tidak ada informasi yang relevan ditemukan dalam basis pengetahuan."
             )
-        return json.dumps(payload, ensure_ascii=False, indent=2)
+        # Tanpa indent: spasi dan baris baru hanya menambah token.
+        return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
     # Legacy Chroma result shape.
     documents = _as_list(retrieval_result.get("documents"))
