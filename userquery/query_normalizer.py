@@ -38,10 +38,7 @@ WORD_REPLACEMENTS = {
     "deh": "",
 }
 
-# Kata niat bahasa Inggris -> padanan istilah di knowledge base (Indonesia).
-# Kata Inggris asli TETAP dipertahankan; istilah Indonesia hanya DITAMBAHKAN
-# di akhir query agar embedding lintas-bahasa punya jangkar yang sama dengan
-# nama subtopik/entity (mis. "extend" -> "perpanjang perpanjangan").
+
 ENGLISH_INTENT_EXPANSIONS = {
     "extend": "perpanjang perpanjangan",
     "extending": "perpanjang perpanjangan",

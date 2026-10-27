@@ -1,4 +1,3 @@
-
 import os
 import uuid
 from datetime import timezone
@@ -217,6 +216,17 @@ def chat():
         previous_entity = conversation.last_entity
         previous_question = conversation.last_question
 
+        # Jawaban bot terakhir dipakai LLM bila pengguna hanya meminta ganti
+        # bahasa atau terjemahan (mis. "please use english"). Diambil dari
+        # riwayat pesan, jadi tidak perlu kolom baru di database.
+        last_bot_message = (
+            Message.query
+            .filter_by(conversation_id=conversation.id, role="bot")
+            .order_by(Message.id.desc())
+            .first()
+        )
+        previous_answer = last_bot_message.content if last_bot_message else None
+
         # Simpan pertanyaan pengguna.
         user_message = Message(
             conversation_id=conversation.id,
@@ -245,6 +255,7 @@ def chat():
             question=question,
             previous_entity=previous_entity,
             previous_question=previous_question,
+            previous_answer=previous_answer,
         )
 
         if not isinstance(result, dict):
@@ -302,6 +313,8 @@ def chat():
             "time": format_wita(bot_message.created_at),
             "found": found,
             "status": result.get("status"),
+            # {"entity": ..., "subtopic": ...}; boleh diabaikan oleh frontend.
+            "semantic_score": result.get("semantic_score"),
         })
 
     except Exception:

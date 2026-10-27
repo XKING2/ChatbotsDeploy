@@ -1,4 +1,3 @@
-
 import json
 import re
 import time
@@ -184,10 +183,10 @@ def generate_aliases_batch(topic_names):
 
         batch_result = _generate_entity_batch(batch)
 
-        if batch_result is None:
-            for name in batch:
-                all_aliases[name] = []
-        else:
+        # Jika request gagal, nama TIDAK dimasukkan ke hasil.
+        # Pemanggil membedakan "gagal" (tidak ada key, dicoba lagi
+        # pada run berikutnya) dari "tidak ada alias" (list kosong).
+        if batch_result is not None:
             all_aliases.update(batch_result)
 
     return all_aliases
@@ -245,10 +244,13 @@ Contoh:
         cleaned = {}
 
         for name in topic_names:
-            aliases = result.get(name, [])
+            if name not in result:
+                continue
+
+            aliases = result[name]
 
             if not isinstance(aliases, list):
-                aliases = []
+                continue
 
             cleaned[name] = _clean_alias_list(
                 aliases,
@@ -309,10 +311,9 @@ def generate_subtopic_aliases_batch(subtopics):
                 f'{item["subtopic_id"]}'
             )
 
-            if batch_result is None:
-                all_aliases[key] = []
-            else:
-                all_aliases[key] = batch_result.get(key, [])
+            # Gagal / key tidak dikembalikan Gemini -> tidak dimasukkan.
+            if batch_result is not None and key in batch_result:
+                all_aliases[key] = batch_result[key]
 
     return all_aliases
 
@@ -377,10 +378,14 @@ Jawab HANYA dengan JSON object valid dalam format:
 
         for item in items:
             key = item["key"]
-            aliases = result.get(key, [])
+
+            if key not in result:
+                continue
+
+            aliases = result[key]
 
             if not isinstance(aliases, list):
-                aliases = []
+                continue
 
             cleaned[key] = _clean_alias_list(
                 aliases,

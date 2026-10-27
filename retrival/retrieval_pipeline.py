@@ -334,8 +334,7 @@ class RetrievalPipeline:
 
         return chunks[:MAX_RELEVANT_CHUNKS]
 
-    def retrieve(self, question, previous_entity=None, top_k=CHUNK_TOP_K,
-                 language_info=None):
+    def retrieve(self, question, previous_entity=None, top_k=CHUNK_TOP_K):
         if not question or not question.strip():
             return self._empty_result()
 
@@ -436,7 +435,6 @@ class RetrievalPipeline:
             entity_results=entity_results,
             subtopic_results=subtopic_results,
             chunk_results=chunk_results,
-            language_info=language_info,
         )
         timings["context_analysis"] = clock() - mark
 

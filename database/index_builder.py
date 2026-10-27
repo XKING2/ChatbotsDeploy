@@ -18,12 +18,6 @@ try:
 except ImportError:
     get_aliases = None
 
-try:
-    from database.alias_generator import generate_subtopic_aliases_batch
-except ImportError:
-    generate_subtopic_aliases_batch = None
-
-
 def load_existing_index():
     if not os.path.exists(KNOWLEDGE_INDEX_PATH):
         return {"entities": []}
@@ -103,21 +97,30 @@ def _clean_aliases(aliases, original_name=None):
 
 
 def _aliases_from_chroma(entity_id):
+    """Ambil alias entity saja; jangan campur alias subtopic."""
     if get_aliases is None:
         return []
 
     try:
         data = get_aliases(entity_id) or {}
         metadatas = data.get("metadatas") or []
-
+        ids = data.get("ids") or []
         aliases = []
 
-        for metadata in metadatas:
+        for index, metadata in enumerate(metadatas):
             if not isinstance(metadata, dict):
                 continue
 
-            value = (metadata.get("alias") or "").strip()
+            record_id = ids[index] if index < len(ids) else ""
+            is_subtopic_alias = (
+                metadata.get("alias_scope") == "subtopic"
+                or bool(metadata.get("subtopic_id"))
+                or "::subtopic::" in str(record_id)
+            )
+            if is_subtopic_alias:
+                continue
 
+            value = (metadata.get("alias") or "").strip()
             if value:
                 aliases.append(value)
 
@@ -127,6 +130,57 @@ def _aliases_from_chroma(entity_id):
         print(
             f"Peringatan: gagal membaca alias Chroma "
             f"untuk {entity_id}: {exc}"
+        )
+        return []
+
+
+def _subtopic_aliases_from_chroma(entity_id, subtopic_id):
+    """Ambil alias untuk satu subtopic tanpa memanggil API Gemini."""
+    if get_aliases is None:
+        return []
+
+    try:
+        data = get_aliases(entity_id) or {}
+        metadatas = data.get("metadatas") or []
+        ids = data.get("ids") or []
+        aliases = []
+        target_id = str(subtopic_id)
+
+        for index, metadata in enumerate(metadatas):
+            if not isinstance(metadata, dict):
+                continue
+
+            record_id = str(ids[index]) if index < len(ids) else ""
+            alias_scope = metadata.get("alias_scope")
+            stored_subtopic_id = str(metadata.get("subtopic_id") or "")
+
+            # Format ID alias yang digunakan main.py:
+            # entity_id::subtopic::subtopic_id::alias::hash
+            id_matches = f"::subtopic::{target_id}::alias::" in record_id
+            is_subtopic_alias = (
+                alias_scope == "subtopic"
+                or bool(stored_subtopic_id)
+                or "::subtopic::" in record_id
+            )
+
+            if not is_subtopic_alias:
+                continue
+            if stored_subtopic_id:
+                if stored_subtopic_id != target_id:
+                    continue
+            elif not id_matches:
+                continue
+
+            value = metadata.get("alias")
+            if isinstance(value, str) and value.strip():
+                aliases.append(value.strip())
+
+        return _clean_aliases(aliases)
+
+    except Exception as exc:
+        print(
+            f"Peringatan: gagal membaca alias subtopic "
+            f"{subtopic_id} dari Chroma: {exc}"
         )
         return []
 
@@ -161,39 +215,6 @@ def _build_entities_from_sections(sections):
             }
 
     return entities
-
-
-def _generate_subtopic_aliases(entity_id, entity, grouped):
-    """
-    Hasil:
-    {
-        "entity_id::subtopic_id": ["alias 1", "alias 2"]
-    }
-    """
-    if not grouped or generate_subtopic_aliases_batch is None:
-        return {}
-
-    alias_inputs = [
-        {
-            "entity_id": entity_id,
-            "entity": entity,
-            "subtopic_id": sid,
-            "subtopic": item["subtopic"],
-        }
-        for sid, item in grouped.items()
-    ]
-
-    try:
-        result = generate_subtopic_aliases_batch(alias_inputs)
-
-        return result if isinstance(result, dict) else {}
-
-    except Exception as exc:
-        print(
-            f"[IndexBuilder] Gagal generate alias subtopic "
-            f"untuk entity '{entity}': {exc}"
-        )
-        return {}
 
 
 def _build_subtopics_for_entity(
@@ -233,23 +254,17 @@ def _build_subtopics_for_entity(
         if content:
             item["_content_parts"].append(content)
 
-    # Generate alias untuk subtopic entity ini.
-    generated_aliases = _generate_subtopic_aliases(
-        entity_id=entity_id,
-        entity=entity,
-        grouped=grouped,
-    )
-
+    # Alias tidak digenerate saat membangun knowledge index.
+    # Baca dari ChromaDB, lalu fallback ke index JSON lama.
     results = []
 
     for sid, item in grouped.items():
         old = old_by_id.get(sid, {})
         subtopic_name = item["subtopic"]
 
-        alias_key = f"{entity_id}::{sid}"
-        new_aliases = generated_aliases.get(alias_key, [])
+        new_aliases = _subtopic_aliases_from_chroma(entity_id, sid)
 
-        # Jika alias baru kosong, pertahankan alias lama.
+        # Jika alias tidak ditemukan di ChromaDB, pertahankan alias JSON lama.
         if not new_aliases:
             new_aliases = old.get("aliases", [])
 

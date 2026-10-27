@@ -3,14 +3,12 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from retrival.entity_retrieval import EntityRetrieval
 from userquery.query_normalizer import normalize_query
-from retrival.language_detector import LanguageDetector
 
 
 class ContextUnderstanding:
 
-    def __init__(self, language_detector=None):
+    def __init__(self):
         self.entity_retrieval = EntityRetrieval()
-        self.language_detector = language_detector or LanguageDetector()
         self.entities = self.entity_retrieval.get_entities() or []
         self.aliases = self.entity_retrieval.get_aliases() or []
 
@@ -183,11 +181,8 @@ class ContextUnderstanding:
         entity_results=None,
         subtopic_results=None,
         chunk_results=None,
-        language_info=None,
     ):
         normalized_question = normalized_question or normalize_query(question)
-        language_info = language_info or self.language_detector.detect(normalized_question)
-        language_code = language_info.get("language_code", "unknown")
         entity_results = list(entity_results or [])
         subtopic_results = list(subtopic_results or [])
         chunk_results = list(chunk_results or [])
@@ -263,10 +258,5 @@ class ContextUnderstanding:
             "subtopic_score": subtopic_score,
             "subtopic_match_type": subtopic_match_type,
             "query_embedding": query_embedding,
-            "language": language_info.get("language", "Unknown"),
-            "language_code": language_code,
-            "language_confidence": language_info.get("confidence", 0.0),
-            "language_status": language_info.get("status", "unknown"),
-            "multilingual_query": language_code in {"zh", "ja", "ru"},
             "anchored_topic": None,
         }
