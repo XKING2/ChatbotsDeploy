@@ -1,0 +1,87 @@
+model=gemini-3-flash-preview finish_reason=FinishReason.MAX_TOKENS
+
+{
+  "results": [
+    {
+      "id": 1,
+      "relevant_contexts": [1],
+      "attributed_sentences": [1, 2]
+    },
+    {
+      "id": 2,
+      "relevant_contexts": [1, 2, 3],
+      "attributed_sentences": [1, 2]
+    },
+    {
+      "id": 3,
+      "relevant_contexts": [1],
+      "attributed_sentences": [1, 2]
+    },
+    {
+      "id": 4,
+      "relevant_contexts": [1, 2],
+      "attributed_sentences": [1]
+    },
+    {
+      "id": 5,
+      "relevant_contexts": [1],
+      "attributed_sentences": [1, 2, 3]
+    },
+    {
+      "id": 6,
+      "relevant_contexts": [1, 3],
+      "attributed_sentences": [1, 2]
+    },
+    {
+      "id": 7,
+      "relevant_contexts": [1],
+      "attributed_sentences": [1, 2]
+    },
+    {
+      "id": 8,
+      "relevant_contexts": [1, 2, 3],
+      "attributed_sentences": [1, 2]
+    },
+    {
+      "id": 9,
+      "relevant_contexts": [1],
+      "attributed_sentences": [1]
+    },
+    {
+      "id": 10,
+      "relevant_contexts": [2, 4, 5],
+      "attributed_sentences": [1, 2]
+    },
+    {
+      "id": 11,
+      "relevant_contexts": [1],
+      "attributed_sentences": []
+    },
+    {
+      "id": 12,
+      "relevant_contexts": [1, 2, 3],
+      "attributed_sentences": [1, 2, 3]
+    },
+    {
+      "id": 13,
+      "relevant_contexts": [1],
+      "attributed_sentences": []
+    },
+    {
+      "id": 14,
+      "relevant_contexts": [1],
+      "attributed_sentences": [2]
+    },
+    {
+      "id": 15,
+      "relevant_contexts": [1, 2, 3],
+      "attributed_sentences": [1, 2]
+    },
+    {
+      "id": 16,
+      "relevant_contexts": [2],
+      "attributed_sentences": []
+    },
+    {
+      "id": 17,
+      "relevant_contexts": [1

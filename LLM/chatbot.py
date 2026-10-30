@@ -91,8 +91,7 @@ class ImmigrationChatbot:
                 "status": "empty_question",
             }
 
-        # Bahasa tidak dideteksi di sini. Pertanyaan dikirim apa adanya dan LLM
-        # menjawab dalam bahasa yang dipakai pengguna (lihat prompt_builder).
+        
         effective_question = question
 
         t_start = time.perf_counter()

@@ -23,21 +23,7 @@ def _page_value(metadata):
 
 
 def format_context(retrieval_result):
-    """
-    Return a JSON string, not a prose-formatted context block.
 
-    New RetrievalPipeline contract:
-      {
-        "found": bool,
-        "context": {"entity_id": ...},
-        "chunk_results": [
-          {"content": ..., "entity": ..., "entity_id": ...,
-           "subtopic": ..., "subtopic_id": ..., "score": ..., ...}
-        ]
-      }
-
-    Legacy raw Chroma results remain supported for migration/testing.
-    """
     if not retrieval_result:
         return json.dumps(
             {"found": False, "contexts": [], "message": "Tidak ada informasi yang relevan."},

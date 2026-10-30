@@ -37,12 +37,7 @@ def semantic_search(
     min_score=None,
     include=None
 ):
-    """Cari di ChromaDB lalu buang hasil di bawah skor minimum.
 
-    min_score=None  -> pakai SEMANTIC_MIN_SCORES[result_type]
-    min_score<=0    -> tanpa filter
-    Bila query gagal, hasil kosong dikembalikan dengan kunci "error".
-    """
     if query_embedding is None:
         return _empty_result()
 

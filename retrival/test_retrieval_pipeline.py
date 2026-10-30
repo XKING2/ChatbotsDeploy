@@ -6,7 +6,7 @@ from retrival.semantic_search import SEMANTIC_MIN_SCORES, semantic_search
 from userquery.query_embedding import create_query_embedding
 from userquery.query_normalizer import normalize_query
 
-DEFAULT_QUESTION = "Apa saja dokumen yang harus dibawa untuk mengurus surat Keterangan"
+DEFAULT_QUESTION = "How long is a visa on arrival valid for?"
 
 
 def print_separator(title):
@@ -111,6 +111,34 @@ def main():
     print("Subtopic ID     :", context.get("subtopic_id"))
     print("Subtopic Score  :", f"{subtopic_score:.6f}" if subtopic_score is not None else None)
     print("Follow-up       :", context.get("is_followup"))
+
+    # Retrieved contexts untuk dataset RAGAS
+    print_separator("RETRIEVED CONTEXTS (DATASET RAGAS)")
+
+    relevant = result.get("relevant_chunks", [])
+
+    if not relevant:
+        print("Retrieved contexts kosong.")
+    else:
+        retrieved_contexts = []
+
+        for index, item in enumerate(relevant, start=1):
+            content = (item.get("content") or "").strip()
+
+            if not content:
+                continue
+
+            retrieved_contexts.append(content)
+
+            print(f"\n--- Context {len(retrieved_contexts)} ---")
+            print(f"Chunk ID  : {item.get('content_chunk_id')}")
+            print(f"Entity    : {item.get('entity')}")
+            print(f"Subtopic  : {item.get('subtopic')}")
+            print(f"Score     : {item.get('score', 0.0):.6f}")
+            print(f"Content   :\n{content}")
+
+        print("\n" + "=" * 70)
+        print(f"Total retrieved contexts: {len(retrieved_contexts)}")
 
     print_separator("ENTITY RANKING (keputusan ContextUnderstanding)")
     ranking = (context.get("entity_result") or {}).get("results", [])

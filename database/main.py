@@ -125,20 +125,6 @@ def process_chunks(chunks):
     add_chunks(valid)
 
 
-# ============================================================
-# ALIAS: PENGECEKAN SEBELUM GENERATE
-# ============================================================
-# Aturan:
-#   - Alias hanya di-generate untuk heading (entity) atau
-#     subheading (subtopic) BARU yang belum punya alias.
-#   - Heading/subheading yang sudah punya alias TIDAK pernah
-#     di-generate ulang, dan alias lamanya tidak diubah.
-#   - Update isi data (chunk) saja tidak memicu generate alias.
-#   - Jika generate gagal (API error), tidak ada yang disimpan
-#     dan akan dicoba lagi pada run berikutnya.
-#   - Jika Gemini sengaja mengembalikan daftar kosong, item
-#     dicatat di file state agar tidak ditanya terus-menerus.
-
 def _norm(text):
     return " ".join(str(text or "").casefold().split())
 

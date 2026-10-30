@@ -1,0 +1,9 @@
+{
+  "day": "2026-10-30",
+  "used": {
+    "GOOGLE_API_KEY:gemini-2.5-flash": 13
+  },
+  "exhausted": [
+    "GOOGLE_API_KEY:gemini-2.5-flash"
+  ]
+}

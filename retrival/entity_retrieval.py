@@ -6,12 +6,7 @@ SUBTOPIC_TOP_K = 5
 
 
 class EntityRetrieval:
-    """Akses data entity, alias, dan subtopic di entity_collection.
 
-    Semua pencarian semantik lewat semantic_search (ChromaDB), tanpa
-    menghitung cosine sendiri dan tanpa memuat seluruh embedding ke memori.
-    Entity, alias, dan subtopic dimuat sekali saat inisialisasi.
-    """
 
     def __init__(self):
         self.entity_collection = entity_collection
