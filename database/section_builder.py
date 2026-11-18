@@ -1,7 +1,5 @@
-import os
+
 import re
-import sys
-import fitz
 
 from database.hashing import compute_hash
 
@@ -9,46 +7,30 @@ from database.hashing import compute_hash
 DOCUMENT_NAME = "Knowledge Base Kantor Imigrasi"
 CATEGORY = "Layanan Imigrasi"
 
-ENTITY_PATTERN = re.compile(
-    r"(?i)^Heading\s*:\s*(.+?)\s*$"
+
+# =========================================================
+# DOCUMENT MARKERS
+# =========================================================
+
+HEADING_PATTERN = re.compile(
+    r"^Heading\s*:\s*(.+?)\s*$",
+    re.IGNORECASE
 )
 
-SUBTOPIC_PATTERN = re.compile(
-    r"(?i)^Sub\s*Heading\s*:\s*(.+?)\s*$"
+SUBHEADING_PATTERN = re.compile(
+    r"^Sub\s*Heading\s*:\s*(.+?)\s*$",
+    re.IGNORECASE
+)
+
+CONTENT_PATTERN = re.compile(
+    r"^Content\s*:\s*(.*)$",
+    re.IGNORECASE
 )
 
 
-def parse_pdf(pdf_path):
-    if not os.path.exists(pdf_path):
-        raise FileNotFoundError(
-            f"PDF tidak ditemukan:\n{pdf_path}"
-        )
-
-    parsed_data = []
-
-    with fitz.open(pdf_path) as document:
-
-        for page_number, page in enumerate(
-            document,
-            start=1
-        ):
-            text = page.get_text("text")
-
-            if not text:
-                continue
-
-            for line in text.splitlines():
-
-                line = line.strip()
-
-                if line:
-                    parsed_data.append({
-                        "text": line,
-                        "page": page_number
-                    })
-
-    return parsed_data
-
+# =========================================================
+# TEXT UTILITIES
+# =========================================================
 
 def clean_marker_text(pattern, text):
     match = pattern.match(text.strip())
@@ -63,327 +45,201 @@ def clean_marker_text(pattern, text):
 def is_separator(text):
     text = text.strip()
 
-    return (
-        len(text) > 5
-        and set(text) == {"="}
-    )
+    return len(text) > 5 and set(text) == {"="}
 
 
-def generate_entity_id(entity):
-    return (
-        "ent_"
-        + compute_hash(
-            entity.strip().lower()
-        )[:12]
-    )
+# =========================================================
+# ID GENERATION
+# =========================================================
+
+def generate_heading_id(heading):
+    return "head_" + compute_hash(
+        heading.strip().casefold()
+    )[:12]
 
 
-def generate_subtopic_id(entity, subtopic):
+def generate_subheading_id(heading, subheading):
     key = (
-        f"{entity.strip().lower()}::"
-        f"{subtopic.strip().lower()}"
+        f"{heading.strip().casefold()}::"
+        f"{subheading.strip().casefold()}"
     )
 
-    return (
-        "sub_"
-        + compute_hash(key)[:12]
-    )
+    return "sub_" + compute_hash(key)[:12]
 
+
+# =========================================================
+# SECTION STORAGE
+# =========================================================
 
 def save_section(
     sections,
-    section_id,
-    entity,
-    subtopic,
+    heading,
+    subheading,
     page_start,
     page_end,
     content,
-    occurrence_counter
+    occurrences
 ):
+    if not heading or not subheading or not content:
+        return
 
-    if not entity or not subtopic:
-        return section_id
-
-    content = " ".join(
+    clean_content = " ".join(
         part.strip()
         for part in content
         if part and part.strip()
-    ).strip()
-
-    if not content:
-        return section_id
-
-    entity = entity.strip()
-    subtopic = subtopic.strip()
-
-    entity_id = generate_entity_id(entity)
-
-    subtopic_id = generate_subtopic_id(
-        entity,
-        subtopic
     )
 
-    occurrence = (
-        occurrence_counter.get(
-            subtopic_id,
-            0
-        ) + 1
+    if not clean_content:
+        return
+
+    heading = heading.strip()
+    subheading = subheading.strip()
+
+    heading_id = generate_heading_id(heading)
+
+    subheading_id = generate_subheading_id(
+        heading,
+        subheading
     )
 
-    occurrence_counter[subtopic_id] = occurrence
+    occurrences[subheading_id] = (
+        occurrences.get(subheading_id, 0) + 1
+    )
 
     sections.append({
-        "section_id": section_id,
+        "section_id": len(sections) + 1,
         "source": "knowledge_base",
         "document": DOCUMENT_NAME,
         "category": CATEGORY,
-        "entity_id": entity_id,
-        "entity": entity,
-        "subtopic_id": subtopic_id,
-        "subtopic": subtopic,
-        "subtopic_occurrence": occurrence,
+
+        "heading_id": heading_id,
+        "heading": heading,
+
+        "subheading_id": subheading_id,
+        "subheading": subheading,
+
+        "subheading_occurrence": occurrences[subheading_id],
+
         "page_start": page_start,
         "page_end": page_end,
-        "content": content
+
+        "content": clean_content
     })
 
-    return section_id + 1
 
+# =========================================================
+# SECTION BUILDER
+# =========================================================
 
 def build_sections(parsed_data):
-
     sections = []
-    section_id = 1
+    occurrences = {}
 
-    occurrence_counter = {}
-
-    entity = None
-    subtopic = None
-
-    content = []
+    current_heading = None
+    current_subheading = None
+    current_content = []
 
     page_start = None
     page_end = None
 
     for item in parsed_data:
 
-        text = (
-            item.get("text") or ""
-        ).strip()
-
+        text = (item.get("text") or "").strip()
         page = item.get("page")
 
-        if not text:
+        if not text or is_separator(text):
             continue
 
-        if is_separator(text):
-            continue
+        # -------------------------------------------------
+        # HEADING
+        # -------------------------------------------------
 
-        # ==========================================
-        # HEADING / ENTITY
-        # ==========================================
+        if HEADING_PATTERN.match(text):
 
-        if ENTITY_PATTERN.match(text):
-
-            section_id = save_section(
+            save_section(
                 sections,
-                section_id,
-                entity,
-                subtopic,
+                current_heading,
+                current_subheading,
                 page_start,
                 page_end,
-                content,
-                occurrence_counter
+                current_content,
+                occurrences
             )
 
-            entity = clean_marker_text(
-                ENTITY_PATTERN,
+            current_heading = clean_marker_text(
+                HEADING_PATTERN,
                 text
             )
 
-            subtopic = None
-            content = []
+            current_subheading = None
+            current_content = []
 
             page_start = None
             page_end = None
 
             continue
 
-        # ==========================================
-        # SUB HEADING / SUBTOPIC
-        # ==========================================
+        # -------------------------------------------------
+        # SUBHEADING
+        # -------------------------------------------------
 
-        if SUBTOPIC_PATTERN.match(text):
+        if SUBHEADING_PATTERN.match(text):
 
-            section_id = save_section(
+            save_section(
                 sections,
-                section_id,
-                entity,
-                subtopic,
+                current_heading,
+                current_subheading,
                 page_start,
                 page_end,
-                content,
-                occurrence_counter
+                current_content,
+                occurrences
             )
 
-            subtopic = clean_marker_text(
-                SUBTOPIC_PATTERN,
+            current_subheading = clean_marker_text(
+                SUBHEADING_PATTERN,
                 text
             )
 
-            content = []
+            current_content = []
 
             page_start = page
             page_end = page
 
             continue
 
-        # ==========================================
+        # -------------------------------------------------
         # CONTENT
-        # Semua teks setelah Sub Heading
-        # dianggap sebagai content
-        # ==========================================
+        # -------------------------------------------------
 
-        if entity and subtopic:
+        if current_heading and current_subheading:
 
-            content.append(text)
+            if CONTENT_PATTERN.match(text):
+                text = clean_marker_text(
+                    CONTENT_PATTERN,
+                    text
+                )
 
-            if page_start is None:
-                page_start = page
+            if text:
 
-            page_end = page
+                current_content.append(text)
 
-    # ==========================================
-    # SIMPAN SECTION TERAKHIR
-    # ==========================================
+                if page_start is None:
+                    page_start = page
+
+                page_end = page
+
+    # -----------------------------------------------------
+    # SAVE LAST SECTION
+    # -----------------------------------------------------
 
     save_section(
         sections,
-        section_id,
-        entity,
-        subtopic,
+        current_heading,
+        current_subheading,
         page_start,
         page_end,
-        content,
-        occurrence_counter
+        current_content,
+        occurrences
     )
 
     return sections
-
-
-def print_sections(sections):
-
-    print("\n" + "=" * 80)
-    print("HASIL SECTION BUILDER")
-    print("=" * 80)
-
-    print(
-        f"Total Sections : "
-        f"{len(sections)}"
-    )
-
-    for section in sections:
-
-        print("\n" + "-" * 80)
-
-        print(
-            f"SECTION ID          : "
-            f"{section['section_id']}"
-        )
-
-        print(
-            f"DOCUMENT            : "
-            f"{section['document']}"
-        )
-
-        print(
-            f"CATEGORY            : "
-            f"{section['category']}"
-        )
-
-        print(
-            f"ENTITY              : "
-            f"{section['entity']}"
-        )
-
-        print(
-            f"ENTITY ID           : "
-            f"{section['entity_id']}"
-        )
-
-        print(
-            f"SUBTOPIC            : "
-            f"{section['subtopic']}"
-        )
-
-        print(
-            f"SUBTOPIC ID         : "
-            f"{section['subtopic_id']}"
-        )
-
-        print(
-            f"OCCURRENCE          : "
-            f"{section['subtopic_occurrence']}"
-        )
-
-        print(
-            f"PAGE                : "
-            f"{section['page_start']} - "
-            f"{section['page_end']}"
-        )
-
-        print("\nCONTENT:")
-        print(section["content"])
-
-
-if __name__ == "__main__":
-
-    if len(sys.argv) < 2:
-
-        print("Usage:")
-        print(
-            "python database/section_builder.py "
-            "<path_pdf>"
-        )
-
-        sys.exit(1)
-
-    pdf_path = sys.argv[1]
-
-    print("=" * 80)
-    print("SECTION BUILDER TEST")
-    print("=" * 80)
-
-    print(f"PDF : {pdf_path}")
-
-    try:
-
-        parsed_data = parse_pdf(
-            pdf_path
-        )
-
-        print(
-            f"Baris PDF terbaca : "
-            f"{len(parsed_data)}"
-        )
-
-        sections = build_sections(
-            parsed_data
-        )
-
-        print_sections(
-            sections
-        )
-
-    except Exception as e:
-
-        print("\nERROR")
-        print("=" * 80)
-
-        print(
-            type(e).__name__
-        )
-
-        print(e)
-
-        sys.exit(1)

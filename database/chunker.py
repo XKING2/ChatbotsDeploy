@@ -1,15 +1,25 @@
 
-import re
-
 from config import MAX_CHUNK_SIZE, CHUNK_OVERLAP
 from database.hashing import compute_hash
 
 
-def split_text(text: str):
-    text = text.strip()
+def split_text(text):
+    """Memecah teks berdasarkan batas kalimat, kata, dan overlap."""
+
+    text = " ".join(str(text or "").split())
 
     if not text:
         return []
+
+    if MAX_CHUNK_SIZE <= 0:
+        raise ValueError(
+            "MAX_CHUNK_SIZE harus lebih besar dari 0."
+        )
+
+    if CHUNK_OVERLAP < 0 or CHUNK_OVERLAP >= MAX_CHUNK_SIZE:
+        raise ValueError(
+            "CHUNK_OVERLAP harus lebih kecil dari MAX_CHUNK_SIZE."
+        )
 
     if len(text) <= MAX_CHUNK_SIZE:
         return [text]
@@ -18,114 +28,121 @@ def split_text(text: str):
     start = 0
 
     while start < len(text):
-        end = start + MAX_CHUNK_SIZE
-        chunks.append(text[start:end])
-        start = end - CHUNK_OVERLAP
+        end = min(start + MAX_CHUNK_SIZE, len(text))
+
+        if end < len(text):
+            # Prioritaskan batas akhir kalimat
+            boundary = max(
+                text.rfind(mark, start, end)
+                for mark in (". ", "! ", "? ", "; ")
+            )
+
+            if boundary >= start + int(MAX_CHUNK_SIZE * 0.6):
+                end = boundary + 1
+
+            else:
+                # Jika tidak ada batas kalimat, gunakan batas kata
+                boundary = text.rfind(" ", start, end)
+
+                if boundary > start:
+                    end = boundary
+
+        chunk = text[start:end].strip()
+
+        if chunk:
+            chunks.append(chunk)
+
+        if end >= len(text):
+            break
+
+        # Mulai chunk berikutnya dengan overlap
+        next_start = max(start + 1, end - CHUNK_OVERLAP)
+
+        # Hindari memulai chunk di tengah kata
+        space = text.find(" ", next_start, end)
+
+        if space != -1:
+            next_start = space + 1
+
+        start = next_start
 
     return chunks
 
 
-def count_sentences(text: str):
-    """Menghitung kalimat secara perkiraan berdasarkan tanda baca."""
-    if not text or not text.strip():
-        return 0
-
-    sentences = re.findall(
-        r'[^.!?]+(?:[.!?]+|$)',
-        text.strip()
-    )
-
-    return sum(1 for sentence in sentences if sentence.strip())
-
-
 def build_retrieval_text(section, chunk):
-    return f"""
-Dokumen Layanan Keimigrasian
+    """Menambahkan konteks heading dan subheading ke teks retrieval."""
 
-Nama Dokumen:
-{section["document"]}
-
-Kategori:
-{section["category"]}
-
-Entity:
-{section["entity"]}
-
-Subtopic:
-{section["subtopic"]}
-
-Dokumen ini berisi informasi mengenai
-{section["subtopic"].lower()}
-dari
-{section["entity"]}.
-
-Isi Informasi:
-
-{chunk}
-""".strip()
+    return (
+        f"Dokumen: {section['document']}\n"
+        f"Kategori: {section['category']}\n"
+        f"Heading: {section['heading']}\n"
+        f"Subheading: {section['subheading']}\n\n"
+        f"Informasi:\n{chunk}"
+    )
 
 
 def generate_content_chunk_id(
-    subtopic_id,
-    subtopic_occurrence,
-    chunk_index
+    subheading_id,
+    subheading_occurrence,
+    chunk_index,
+    source_id=None
 ):
-    return f"{subtopic_id}_o{subtopic_occurrence}_c{chunk_index}"
+    """Membuat ID chunk berdasarkan sumber dan subheading."""
 
-
-def print_chunk_summary(sections, all_chunks):
-    total_sentences = sum(
-        count_sentences(section.get("content", ""))
-        for section in sections
+    local_id = (
+        f"{subheading_id}"
+        f"_o{subheading_occurrence}"
+        f"_c{chunk_index}"
     )
 
-    print("\n" + "=" * 68)
-    print("RINGKASAN HASIL CHUNKING")
-    print("=" * 68)
-
-    headers = [
-        "Max Chunk Size",
-        "Total Kalimat",
-        "Total Chunk"
-    ]
-
-    values = [
-        str(MAX_CHUNK_SIZE),
-        str(total_sentences),
-        str(len(all_chunks))
-    ]
-
-    widths = [20, 20, 20]
-
-    def print_row(items):
-        print(
-            "| " +
-            " | ".join(
-                item.center(width)
-                for item, width in zip(items, widths)
-            ) +
-            " |"
-        )
-
-    border = "+" + "+".join(
-        "-" * (width + 2) for width in widths
-    ) + "+"
-
-    print(border)
-    print_row(headers)
-    print(border)
-    print_row(values)
-    print(border)
-
-    print(f"Chunk overlap : {CHUNK_OVERLAP} karakter")
-    print("=" * 68)
+    return (
+        f"{source_id}::{local_id}"
+        if source_id
+        else local_id
+    )
 
 
-def chunk_sections(sections):
+def chunk_sections(sections, source_id=None, source_file=None):
+    """Memecah setiap section menjadi chunk beserta metadata dan hash."""
+
     all_chunks = []
 
+    required_fields = (
+        "document",
+        "category",
+        "section_id",
+        "heading_id",
+        "heading",
+        "subheading_id",
+        "subheading",
+        "page_start",
+        "page_end"
+    )
+
     for section in sections:
-        text_chunks = split_text(section.get("content", ""))
+        missing = [
+            field for field in required_fields
+            if field not in section
+        ]
+
+        if missing:
+            raise ValueError(
+                f"Section {section.get('section_id', '?')} "
+                f"tidak memiliki field: {', '.join(missing)}"
+            )
+
+        current_source_id = (
+            section.get("source_id") or source_id
+        )
+
+        current_source_file = (
+            section.get("source_file") or source_file or ""
+        )
+
+        text_chunks = split_text(
+            section.get("content", "")
+        )
+
         total_chunks = len(text_chunks)
 
         for index, chunk in enumerate(text_chunks, start=1):
@@ -134,25 +151,34 @@ def chunk_sections(sections):
                 chunk
             )
 
-            content_chunk_id = generate_content_chunk_id(
-                section["subtopic_id"],
-                section.get("subtopic_occurrence", 1),
-                index
+            chunk_id = generate_content_chunk_id(
+                section["subheading_id"],
+                section.get("subheading_occurrence", 1),
+                index,
+                current_source_id
             )
 
             all_chunks.append({
-                "content_chunk_id": content_chunk_id,
+                "content_chunk_id": chunk_id,
                 "content_hash": compute_hash(retrieval_text),
+
+                "source_id": current_source_id,
+                "source_file": current_source_file,
 
                 "document": section["document"],
                 "category": section["category"],
+
                 "section_id": section["section_id"],
 
-                "entity_id": section["entity_id"],
-                "entity": section["entity"],
+                "heading_id": section["heading_id"],
+                "heading": section["heading"],
 
-                "subtopic_id": section["subtopic_id"],
-                "subtopic": section["subtopic"],
+                "subheading_id": section["subheading_id"],
+                "subheading": section["subheading"],
+                "subheading_occurrence": section.get(
+                    "subheading_occurrence",
+                    1
+                ),
 
                 "page_start": section["page_start"],
                 "page_end": section["page_end"],
@@ -164,77 +190,4 @@ def chunk_sections(sections):
                 "retrieval_text": retrieval_text
             })
 
-    print_chunk_summary(sections, all_chunks)
-
     return all_chunks
-
-
-def print_chunk_summary(sections, all_chunks):
-    total_sentences = sum(
-        count_sentences(section.get("content", ""))
-        for section in sections
-    )
-
-    print("\n" + "=" * 90)
-    print("RINGKASAN HASIL CHUNKING")
-    print("=" * 90)
-
-    print(
-        f"| {'Max Chunk Size':<20} "
-        f"| {'Total Kalimat':<20} "
-        f"| {'Total Chunk':<20} |"
-    )
-    print("-" * 70)
-
-    print(
-        f"| {MAX_CHUNK_SIZE:<20} "
-        f"| {total_sentences:<20} "
-        f"| {len(all_chunks):<20} |"
-    )
-
-    print(f"\nChunk overlap: {CHUNK_OVERLAP} karakter")
-
-    print("\n" + "=" * 120)
-    print("DETAIL ID CHUNK")
-    print("=" * 120)
-
-    headers = [
-        "No.",
-        "Content Chunk ID",
-        "Subtopic ID",
-        "Chunk",
-        "Total",
-        "Karakter"
-    ]
-
-    widths = [5, 38, 25, 8, 8, 10]
-
-    def print_row(values):
-        print(
-            "| " + " | ".join(
-                str(value)[:width].ljust(width)
-                for value, width in zip(values, widths)
-            ) + " |"
-        )
-
-    border = "+" + "+".join(
-        "-" * (width + 2) for width in widths
-    ) + "+"
-
-    print(border)
-    print_row(headers)
-    print(border)
-
-    for number, chunk in enumerate(all_chunks[:10], start=1):
-        print_row([
-            number,
-            chunk["content_chunk_id"],
-            chunk["subtopic_id"],
-            chunk["chunk_index"],
-            chunk["total_chunks"],
-            len(chunk["display_text"])
-        ])
-
-    print(border)
-    print(f"Total ID chunk ditampilkan: {min(len(all_chunks), 10)}")
-    print("=" * 120)

@@ -1,523 +1,339 @@
 import time
 
-from database.chroma_db import entity_collection
+from database.chroma_db import heading_collection
 from retrival.chunk_retrieval import ChunkRetrieval
 from retrival.context_understanding import ContextUnderstanding
 from retrival.semantic_search import semantic_search
 from userquery.query_embedding import create_query_embedding
 from userquery.query_normalizer import normalize_query
 
+# ============================================================
+# KONFIGURASI
+# ============================================================
 
-ENTITY_TOP_K = 5
-SUBTOPIC_TOP_K = 5
-CHUNK_TOP_K = 5
+HEADING_TOP_K = 10
+ALIAS_TOP_K = 30
+SUBHEADING_TOP_K = 15
+CHUNK_TOP_K = 10
 
-# Alias retrieval: aliases (multilingual) are embedded in entity_collection with
-# type="alias". They are searched as extra evidence for entity and subtopic.
-ALIAS_TOP_K = 30                # banyak alias dibandingkan sekaligus (multi-vektor)
-ALIAS_RANK_K = 10               # konstanta reciprocal-rank; hanya untuk info debug alias_support
-ALIAS_SCOPED_ENTITY_LIMIT = 3   # chunk search tambahan dibatasi ke N entity teratas
-MAX_ENTITY_CANDIDATES = 8
-MAX_SUBTOPIC_CANDIDATES = 10
+HEADING_CHUNK_TOP_K = 10   # chunk berperingkat di dalam heading terpilih
+EXTRA_CHUNK_TOP_K = 2      # chunk tambahan di luar subheading terpilih
+MAX_RELEVANT_CHUNKS = 20   # batas konteks untuk LLM
+RUNNER_UP_RATIO = 0.8      # subheading kedua ikut jika skor RRF >= 80% juara
 
-# Context assembly for the LLM (tidak mengubah pemilihan entity/subtopic).
-ENTITY_CHUNK_TOP_K = 6      # tanpa subtopic: ambil N chunk terbaik dalam entity
-EXTRA_CHUNK_TOP_K = 2       # dengan subtopic: tambahan chunk terbaik dari subtopic lain
-MAX_RELEVANT_CHUNKS = 12    # batas aman panjang prompt
 
-# Catatan: TIDAK ada angka minimum skor di file ini. Penyaringan skor hanya
-# dilakukan di retrival/semantic_search.py (SEMANTIC_MIN_SCORES).
+def _score(distance):
+    try:
+        return None if distance is None else 1.0 - float(distance)
+    except (TypeError, ValueError):
+        return None
 
 
 class RetrievalPipeline:
+
     def __init__(self, context_engine=None, chunk_retrieval=None):
         self.context_engine = context_engine or ContextUnderstanding()
         self.chunk_retrieval = chunk_retrieval or ChunkRetrieval()
-        self.entity_collection = entity_collection
-        self.chunk_collection = self.chunk_retrieval.chunk_collection
-        self.entity_map = self._build_entity_map()
-        self.subtopic_map = self._build_subtopic_map()
+        self.heading_collection = heading_collection
+        self.chunk_collection = self.chunk_retrieval.collection
 
-    def _build_entity_map(self):
-        result = self.entity_collection.get(
-            where={"type": "entity"},
-            include=["documents", "metadatas"],
-        )
-        entity_map = {}
-        ids = result.get("ids", [])
-        documents = result.get("documents", [])
-        metadatas = result.get("metadatas", [])
+    # ---------------------------------------------------------
+    # KONVERSI HASIL CHROMA
+    # ---------------------------------------------------------
 
-        for entity_id, document, metadata in zip(ids, documents, metadatas):
-            metadata = metadata or {}
-            entity_name = (metadata.get("entity") or document or "").strip()
-            if entity_id and entity_name:
-                entity_map[entity_id] = entity_name
-        return entity_map
+    @staticmethod
+    def _rows(raw):
+        raw = raw or {}
+        columns = [(raw.get(k) or [[]])[0]
+                   for k in ("ids", "documents", "metadatas", "distances")]
+        for item_id, doc, meta, dist in zip(*columns):
+            yield item_id, doc or "", meta or {}, _score(dist)
 
-    def _build_subtopic_map(self):
-        result = self.entity_collection.get(
-            where={"type": "subtopic"},
-            include=["documents", "metadatas"],
-        )
-        subtopic_map = {}
-        ids = result.get("ids", [])
-        documents = result.get("documents", [])
-        metadatas = result.get("metadatas", [])
-
-        for item_id, document, metadata in zip(ids, documents, metadatas):
-            metadata = metadata or {}
-            subtopic_id = metadata.get("subtopic_id") or item_id
-            name = (metadata.get("subtopic") or document or "").strip()
-            if subtopic_id and name:
-                subtopic_map[subtopic_id] = {
-                    "name": name,
-                    "entity_id": metadata.get("entity_id"),
-                }
-        return subtopic_map
-
-    def _get_entity_name(self, entity_id):
-        return self.entity_map.get(entity_id) if entity_id else None
-
-    def _convert_results(self, result, result_type):
-        if not result:
-            return []
-
-        ids = result.get("ids") or [[]]
-        documents = result.get("documents") or [[]]
-        metadatas = result.get("metadatas") or [[]]
-        distances = result.get("distances") or [[]]
-        ids = ids[0] if ids else []
-        documents = documents[0] if documents else []
-        metadatas = metadatas[0] if metadatas else []
-        distances = distances[0] if distances else []
-
+    def _heading_rows(self, raw, catalog, kind):
+        """Hasil pencarian heading atau alias -> daftar dict."""
         results = []
-        for item_id, document, metadata, distance in zip(ids, documents, metadatas, distances):
-            metadata = metadata or {}
-            score = 1.0 - float(distance) if distance is not None else 0.0
-            entity_id = metadata.get("entity_id")
-            entity_name = metadata.get("entity") or self._get_entity_name(entity_id)
-            subtopic_id = metadata.get("subtopic_id")
-            subtopic = metadata.get("subtopic")
+        for rid, doc, meta, score in self._rows(raw):
+            hid = meta.get("heading_id") or (rid if kind == "heading" else None)
+            if not hid:
+                continue
+            hid = str(hid)
+            sid = meta.get("subheading_id")
+            sub = catalog.subheading(sid)
+            item = {
+                **meta,
+                "id": rid, "type": kind, "score": score, "document": doc,
+                "heading_id": hid,
+                "heading": meta.get("heading") or catalog.heading_name(hid)
+                           or (doc if kind == "heading" else None),
+                "subheading_id": str(sid) if sid else None,
+                "subheading": meta.get("subheading")
+                              or (sub["name"] if sub else None),
+            }
+            if kind == "alias":
+                item["alias"] = meta.get("alias") or doc
+                item["alias_scope"] = "subheading" if sid else "heading"
+            results.append(item)
+        return results
 
+    def _subheading_rows(self, raw, catalog):
+        results = []
+        for rid, doc, meta, score in self._rows(raw):
+            hid = meta.get("heading_id")
+            sid = meta.get("subheading_id") or rid
+            if not hid or not sid:
+                continue
+            sub = catalog.subheading(sid)
             results.append({
-                "type": result_type,
-                "id": item_id,
-                "score": score,
-                "content": document or "",
-                "entity_id": entity_id,
-                "entity": entity_name,
-                "subtopic_id": subtopic_id,
-                "subtopic": subtopic,
-                "content_chunk_id": (
-                    metadata.get("content_chunk_id") or item_id
-                    if result_type == "chunk" else None
-                ),
-                "document": metadata.get("document"),
-                "category": metadata.get("category"),
-                "page_start": metadata.get("page_start"),
-                "page_end": metadata.get("page_end"),
-                "chunk_index": metadata.get("chunk_index"),
-                "total_chunks": metadata.get("total_chunks"),
-                "description": metadata.get("description"),
-                "examples": metadata.get("examples"),
+                **meta,
+                "id": rid, "type": "subheading", "score": score,
+                "document": doc,
+                "heading_id": str(hid),
+                "heading": meta.get("heading") or catalog.heading_name(hid),
+                "subheading_id": str(sid),
+                "subheading": meta.get("subheading")
+                              or (sub["name"] if sub else doc),
             })
         return results
 
     @staticmethod
-    def _blank_item(result_type, item_id, score, entity_id, entity,
-                    subtopic_id=None, subtopic=None):
+    def _chunk_item(rid, content, meta, score, catalog):
+        hid = meta.get("heading_id")
+        sid = meta.get("subheading_id")
+        sub = catalog.subheading(sid)
         return {
-            "type": result_type,
-            "id": item_id,
+            **meta,
+            "id": rid,
+            "type": "chunk",
+            "heading_id": str(hid) if hid else None,
+            "heading": meta.get("heading") or catalog.heading_name(hid),
+            "subheading_id": str(sid) if sid else None,
+            "subheading": meta.get("subheading") or (sub["name"] if sub else None),
             "score": score,
-            "content": "",
-            "entity_id": entity_id,
-            "entity": entity,
-            "subtopic_id": subtopic_id,
-            "subtopic": subtopic,
-            "content_chunk_id": None,
-            "document": None,
-            "category": None,
-            "page_start": None,
-            "page_end": None,
-            "chunk_index": None,
-            "total_chunks": None,
-            "description": None,
-            "examples": None,
+            "content": content,
+            "document": meta.get("document"),
+            "content_chunk_id": meta.get("content_chunk_id") or rid,
+            "category": meta.get("category"),
+            "page_start": meta.get("page_start"),
+            "page_end": meta.get("page_end"),
+            "chunk_index": meta.get("chunk_index"),
+            "total_chunks": meta.get("total_chunks"),
         }
 
-    def _alias_subtopic_id(self, item_id, metadata):
-        """Find the subtopic an alias belongs to (None for entity-level aliases)."""
-        subtopic_id = metadata.get("subtopic_id")
-        if subtopic_id:
-            return subtopic_id
-        if isinstance(item_id, str) and "::alias::" in item_id:
-            prefix = item_id.split("::alias::", 1)[0]
-            if prefix in self.subtopic_map:
-                return prefix
-        return None
+    def _chunk_rows(self, raw, catalog):
+        return [self._chunk_item(rid, doc, meta, score, catalog)
+                for rid, doc, meta, score in self._rows(raw)
+                if meta.get("heading_id")]
 
-    def _convert_alias_results(self, result):
-        """Turn alias hits into entity-level and subtopic-level candidates.
+    # ---------------------------------------------------------
+    # PENCARIAN
+    # ---------------------------------------------------------
 
-        Every alias is evidence for its entity. An alias that belongs to a
-        subtopic is also evidence for that subtopic.
+    @staticmethod
+    def _order(item):
+        index = item.get("chunk_index")
+        return (index is None, index if index is not None else 0)
+
+    def _search(self, embedding, where, top_k):
+        return semantic_search(embedding, self.heading_collection, where=where,
+                               top_k=top_k, min_score=0.0)
+
+    def _assemble(self, embedding, context, scoped_chunks, catalog):
         """
-        entity_items, subtopic_items, hits = [], [], []
-        if not result:
-            return entity_items, subtopic_items, hits
-
-        ids = (result.get("ids") or [[]])[0]
-        documents = (result.get("documents") or [[]])[0]
-        metadatas = (result.get("metadatas") or [[]])[0]
-        distances = (result.get("distances") or [[]])[0]
-
-        for item_id, document, metadata, distance in zip(
-            ids, documents, metadatas, distances
-        ):
-            metadata = metadata or {}
-            entity_id = metadata.get("entity_id")
-            if not entity_id:
-                continue
-            score = 1.0 - float(distance) if distance is not None else 0.0
-            alias = metadata.get("alias") or document or ""
-            entity_name = self._get_entity_name(entity_id)
-            subtopic_id = self._alias_subtopic_id(item_id, metadata)
-            subtopic_info = self.subtopic_map.get(subtopic_id) if subtopic_id else None
-
-            entity_item = self._blank_item(
-                "entity", entity_id, score, entity_id, entity_name
-            )
-            entity_item["source"] = "alias"
-            entity_item["matched_alias"] = alias
-            entity_items.append(entity_item)
-
-            subtopic_name = subtopic_info["name"] if subtopic_info else None
-            if subtopic_id and subtopic_name:
-                subtopic_item = self._blank_item(
-                    "subtopic", subtopic_id, score, entity_id, entity_name,
-                    subtopic_id, subtopic_name,
-                )
-                subtopic_item["source"] = "alias"
-                subtopic_item["matched_alias"] = alias
-                subtopic_items.append(subtopic_item)
-
-            hits.append({
-                "alias": alias,
-                "entity": entity_name,
-                "subtopic": subtopic_name,
-                "score": score,
-            })
-        return (
-            self._aggregate_alias_support(entity_items, "entity_id"),
-            self._aggregate_alias_support(subtopic_items, "subtopic_id"),
-            hits,
-        )
-
-    @staticmethod
-    def _aggregate_alias_support(items, key):
-        """One candidate per entity/subtopic, keeping its best alias score.
-
-        `alias_support` / `alias_hit_count` are diagnostic only (shown by the
-        debug test). They do not influence which entity or subtopic is chosen.
+        Susun konteks LLM: seluruh chunk subheading terpilih (urut dokumen),
+        subheading pesaing yang skornya berdekatan, dan beberapa chunk
+        terbaik lain dalam heading.
         """
-        groups = {}
-        for rank, item in enumerate(items, start=1):
-            # items are in ranking order (best alias first).
-            k = item.get(key)
-            if not k:
-                continue
-            groups.setdefault(k, []).append((rank, item))
+        heading_id = context.get("heading_id")
+        subheading_id = context.get("subheading_id")
+        scored = {c["id"]: c for c in scoped_chunks}
 
-        aggregated = []
-        for entries in groups.values():
-            best_item = max(entries, key=lambda e: e[1].get("score", 0.0))[1]
-            best_item = dict(best_item)
-            best_item["alias_support"] = sum(
-                1.0 / (ALIAS_RANK_K + rank) for rank, _ in entries
-            )
-            best_item["alias_hit_count"] = len(entries)
-            aggregated.append(best_item)
-        return aggregated
+        if not subheading_id:
+            return list(scoped_chunks)[:MAX_RELEVANT_CHUNKS]
 
-    @staticmethod
-    def _merge_best(primary, extra, key, limit):
-        """Merge two candidate lists, keep the best score per key.
+        def full(sid):
+            items = []
+            for rid, doc, meta, score in self.chunk_retrieval.get_all_scored(
+                    embedding, heading_id, sid):
+                known = scored.get(rid)
+                if score is None and known:
+                    score = known["score"]
+                items.append(self._chunk_item(rid, doc, meta, score, catalog))
+            return items
 
-        Evidence fields from the losing item (alias_support) are kept.
-        """
-        best = {}
-        support = {}
-        counts = {}
-        for item in list(primary) + list(extra):
-            k = item.get(key)
-            if not k:
-                continue
-            if item.get("alias_support"):
-                support[k] = max(support.get(k, 0.0), item["alias_support"])
-                counts[k] = max(counts.get(k, 0), item.get("alias_hit_count", 0))
-            if k not in best or item.get("score", 0.0) > best[k].get("score", 0.0):
-                best[k] = item
-        merged = []
-        for k, item in best.items():
-            if k in support:
-                item = dict(item)
-                item["alias_support"] = support[k]
-                item["alias_hit_count"] = counts[k]
-            merged.append(item)
-        merged.sort(key=lambda it: it.get("score", 0.0), reverse=True)
-        return merged[:limit]
+        primary = full(subheading_id)
+        if len(primary) > MAX_RELEVANT_CHUNKS:
+            primary = sorted(primary, key=lambda c: -(c["score"] or -1))
+            primary = sorted(primary[:MAX_RELEVANT_CHUNKS], key=self._order)
+
+        selected, seen = list(primary), {c["id"] for c in primary}
+
+        candidates = context.get("subheading_candidates") or []
+        if len(candidates) > 1 and candidates[0]["rrf_score"] > 0:
+            runner = candidates[1]
+            if runner["rrf_score"] >= RUNNER_UP_RATIO * candidates[0]["rrf_score"]:
+                extra = [c for c in scoped_chunks
+                         if c.get("subheading_id") == runner["subheading_id"]
+                         and c["id"] not in seen][:EXTRA_CHUNK_TOP_K]
+                selected += extra
+                seen.update(c["id"] for c in extra)
+
+        extras = [c for c in scoped_chunks if c["id"] not in seen][:EXTRA_CHUNK_TOP_K]
+        return (selected + extras)[:MAX_RELEVANT_CHUNKS]
+
+    # ---------------------------------------------------------
+    # HASIL
+    # ---------------------------------------------------------
 
     @staticmethod
-    def _rank_candidates(entity_results, subtopic_results, chunk_results):
-        candidates = entity_results + subtopic_results + chunk_results
-        candidates.sort(key=lambda item: item.get("score", 0.0), reverse=True)
-        return candidates
-
-    @staticmethod
-    def _empty_result(status="not_found", context=None, search_errors=None):
+    def _empty_result(status="not_found", context=None, search_errors=None,
+                      timings=None):
         return {
-            "found": False,
-            "status": status,
-            "domain_relevant": False,
-            "context": context,
-            "entity_results": [],
-            "subtopic_results": [],
-            "chunk_results": [],
-            "relevant_chunks": [],
-            "search_errors": search_errors or [],
-            "results": [],
-            "top3": [],
-            "best_candidate": None,
+            "found": False, "status": status, "domain_relevant": False,
+            "retrieval_found": False, "context": context,
+            "heading_results": [], "subheading_results": [],
+            "chunk_results": [], "alias_hits": [],
+            "relevant_chunks": [], "results": [], "top3": [],
+            "best_candidate": None, "raw_results": [],
+            "search_errors": search_errors or [], "timings": timings or {},
         }
 
     @staticmethod
-    def _scoped_entity_ids(entity_results, subtopic_results, chunk_results, limit):
-        """Entity yang paling kuat, berurutan: entity/alias, subtopic, lalu chunk.
-
-        Dasarnya semua bukti, bukan hanya daftar entity, supaya chunk tambahan
-        tetap dicari walau penyaringan skor mengosongkan salah satu daftar.
-        """
-        entity_ids = []
-        for group in (entity_results, subtopic_results, chunk_results):
+    def _unique(*groups):
+        seen, out = set(), []
+        for group in groups:
             for item in group:
-                entity_id = item.get("entity_id")
-                if entity_id and entity_id not in entity_ids:
-                    entity_ids.append(entity_id)
-                if len(entity_ids) >= limit:
-                    return entity_ids
-        return entity_ids
+                key = (item.get("type"), item.get("id"))
+                if key not in seen:
+                    seen.add(key)
+                    out.append(item)
+        return out
 
-    def _collect_relevant_chunks(self, query_embedding, entity_id, subtopic_id):
+    # ---------------------------------------------------------
+    # UTAMA
+    # ---------------------------------------------------------
 
-        if not entity_id:
-            return []
-
-        raw = self.chunk_retrieval.retrieve_all(
-            query_embedding=query_embedding,
-            entity_id=entity_id,
-        )
-        scored = self._convert_results(raw, "chunk")  # sorted by score (best first)
-        if not scored:
-            return []
-
-        if subtopic_id:
-            primary = [c for c in scored if c.get("subtopic_id") == subtopic_id]
-            primary.sort(key=lambda c: (c.get("chunk_index") is None, c.get("chunk_index") or 0))
-            primary_ids = {c["id"] for c in primary}
-            extras = [c for c in scored if c["id"] not in primary_ids][:EXTRA_CHUNK_TOP_K]
-            chunks = primary + extras
-        else:
-            chunks = scored[:ENTITY_CHUNK_TOP_K]
-
-        return chunks[:MAX_RELEVANT_CHUNKS]
-
-    def retrieve(self, question, previous_entity=None, top_k=CHUNK_TOP_K):
-        if not question or not question.strip():
+    def retrieve(self, question, previous_heading=None,
+                 previous_heading_id=None, top_k=CHUNK_TOP_K):
+        if not isinstance(question, str) or not question.strip():
             return self._empty_result()
+        if not isinstance(top_k, int) or top_k < 1:
+            raise ValueError("top_k harus berupa integer minimal 1.")
 
-        timings = {}
         clock = time.perf_counter
-        started = clock()
+        timings, started = {}, clock()
 
-        # One normalization and one query embedding for all searches.
-        normalized_question = normalize_query(question)
+        normalized = normalize_query(question)
+        if not normalized:
+            return self._empty_result("empty_query")
+
         mark = clock()
-        query_embedding = create_query_embedding(normalized_question)
+        embedding = create_query_embedding(normalized)
         timings["embedding"] = clock() - mark
-        if query_embedding is None:
-            result = self._empty_result(status="embedding_failed")
-            result["timings"] = timings
-            return result
+        if embedding is None:
+            timings["retrieval_total"] = clock() - started
+            return self._empty_result("embedding_failed", timings=timings)
+
+        try:
+            catalog = self.context_engine.catalog()
+        except Exception as exc:
+            return self._empty_result(
+                "search_error", search_errors=[f"catalog: {exc}"], timings=timings)
+
+        # --- empat kanal pencarian, satu embedding ---
         mark = clock()
-
-        entity_raw = semantic_search(
-            query_embedding=query_embedding,
-            collection=self.entity_collection,
-            where={"type": "entity"},
-            top_k=ENTITY_TOP_K,
-            result_type="entity",
-        )
-        subtopic_raw = semantic_search(
-            query_embedding=query_embedding,
-            collection=self.entity_collection,
-            where={"type": "subtopic"},
-            top_k=SUBTOPIC_TOP_K,
-            result_type="subtopic",
-        )
-        chunk_raw = self.chunk_retrieval.retrieve(
-            query_embedding=query_embedding,
-            top_k=top_k,
-        )
-        # Alias evidence: multilingual aliases of entities and subtopics.
-        alias_raw = semantic_search(
-            query_embedding=query_embedding,
-            collection=self.entity_collection,
-            where={"type": "alias"},
-            top_k=ALIAS_TOP_K,
-            result_type="alias",
-        )
-
+        raws = {
+            "heading": self._search(embedding, {"type": "heading"}, HEADING_TOP_K),
+            "alias": self._search(embedding, {"type": "alias"}, ALIAS_TOP_K),
+            "subheading": self._search(
+                embedding, {"type": "subheading"}, SUBHEADING_TOP_K),
+            "chunk": self.chunk_retrieval.retrieve(
+                query_embedding=embedding, top_k=top_k, min_score=0.0),
+        }
         timings["chroma_search"] = clock() - mark
+        search_errors = [str(r["error"]) for r in raws.values()
+                         if r and r.get("error")]
 
-        search_errors = [
-            raw["error"]
-            for raw in (entity_raw, subtopic_raw, chunk_raw, alias_raw)
-            if raw and raw.get("error")
-        ]
+        heading_results = self._heading_rows(raws["heading"], catalog, "heading")
+        alias_results = self._heading_rows(raws["alias"], catalog, "alias")
+        subheading_results = self._subheading_rows(raws["subheading"], catalog)
+        chunk_results = self._chunk_rows(raws["chunk"], catalog)
 
-        entity_results = self._convert_results(entity_raw, "entity")
-        subtopic_results = self._convert_results(subtopic_raw, "subtopic")
-        chunk_results = self._convert_results(chunk_raw, "chunk")
+        alias_hits = [{
+            "alias": a["alias"], "heading": a["heading"],
+            "subheading": a["subheading"], "heading_id": a["heading_id"],
+            "subheading_id": a["subheading_id"], "score": a["score"],
+        } for a in alias_results]
 
-        alias_entities, alias_subtopics, alias_hits = (
-            self._convert_alias_results(alias_raw)
-        )
-        entity_results = self._merge_best(
-            entity_results, alias_entities, "entity_id", MAX_ENTITY_CANDIDATES
-        )
-        subtopic_results = self._merge_best(
-            subtopic_results, alias_subtopics, "subtopic_id",
-            MAX_SUBTOPIC_CANDIDATES,
-        )
+        # --- pemahaman konteks; chunk dalam heading diambil sesuai kebutuhan ---
+        scoped_cache = {}
 
-        # Extra chunk evidence inside the strongest entities, so a subtopic
-        # found through an alias can be confirmed by an aligned chunk.
-        top_entity_ids = self._scoped_entity_ids(
-            entity_results, subtopic_results, chunk_results,
-            ALIAS_SCOPED_ENTITY_LIMIT,
-        )
-        if top_entity_ids:
-            scoped_raw = self.chunk_retrieval.retrieve(
-                query_embedding=query_embedding,
-                entity_id=top_entity_ids,
-                top_k=top_k,
-            )
-            if scoped_raw.get("error"):
-                search_errors.append(scoped_raw["error"])
-            chunk_results = self._merge_best(
-                chunk_results,
-                self._convert_results(scoped_raw, "chunk"),
-                "id",
-                top_k * 2,
-            )
+        def scoped_chunks(heading_id):
+            if heading_id not in scoped_cache:
+                raw = self.chunk_retrieval.retrieve(
+                    query_embedding=embedding, heading_id=heading_id,
+                    top_k=HEADING_CHUNK_TOP_K, min_score=0.0)
+                if raw.get("error"):
+                    search_errors.append(str(raw["error"]))
+                scoped_cache[heading_id] = self._chunk_rows(raw, catalog)
+            return scoped_cache[heading_id]
 
-        # ContextUnderstanding resolves context from these results; it does not
-        # run EntityRetrieval semantic search or create another embedding.
         mark = clock()
         context = self.context_engine.analyze(
             question=question,
-            previous_entity=previous_entity,
-            normalized_question=normalized_question,
-            query_embedding=query_embedding,
-            entity_results=entity_results,
-            subtopic_results=subtopic_results,
+            previous_heading=previous_heading,
+            previous_heading_id=previous_heading_id,
+            normalized_question=normalized,
+            query_embedding=embedding,
+            heading_results=heading_results,
+            alias_results=alias_results,
+            subheading_results=subheading_results,
             chunk_results=chunk_results,
+            scoped_chunks=scoped_chunks,
         )
         timings["context_analysis"] = clock() - mark
 
-        # Keep the raw semantic matches for debugging, but never treat a raw
-        # ChromaDB match as proof that the question belongs to the domain.
-        raw_candidates = self._rank_candidates(
-            entity_results, subtopic_results, chunk_results
-        )
         domain_relevant = bool(context.get("domain_relevant"))
-        resolved_entity_id = context.get("entity_id")
+        heading_id = context.get("heading_id")
 
-        candidates = []
-        relevant_chunks = []
-
-        if domain_relevant and resolved_entity_id:
-            # Only content of the resolved entity reaches answer generation.
-            # This prevents a high-scoring chunk from a different service from
-            # hijacking the answer.
-            candidates = self._rank_candidates(
-                [i for i in entity_results if i.get("entity_id") == resolved_entity_id],
-                [i for i in subtopic_results if i.get("entity_id") == resolved_entity_id],
-                [i for i in chunk_results if i.get("entity_id") == resolved_entity_id],
-            )
-
+        relevant = []
+        if domain_relevant and heading_id:
             mark = clock()
-            relevant_chunks = self._collect_relevant_chunks(
-                query_embedding,
-                resolved_entity_id,
-                context.get("subtopic_id"),
-            )
+            relevant = self._assemble(
+                embedding, context, scoped_chunks(heading_id), catalog)
             timings["collect_chunks"] = clock() - mark
 
-            # Follow-up: entity berasal dari konteks sebelumnya sehingga bisa
-            # tanpa kandidat; chunk entity itu tetap menjadi bahannya.
-            if not candidates and relevant_chunks:
-                candidates = sorted(
-                    relevant_chunks,
-                    key=lambda item: item.get("score", 0.0),
-                    reverse=True,
-                )
-
-        # found: ada konteks nyata untuk dijawab oleh LLM.
-        found = bool(domain_relevant and relevant_chunks)
-
-        # best_candidate is meant to be usable content, so prefer the best
-        # chunk; an entity/subtopic row has no text of its own.
-        best_candidate = None
-        if candidates:
-            chunk_candidates = [c for c in candidates if c.get("type") == "chunk"]
-            best_candidate = chunk_candidates[0] if chunk_candidates else candidates[0]
-
+        found = bool(domain_relevant and relevant)
         if found:
             status = "found"
+        elif search_errors:
+            status = "search_error"
         elif not domain_relevant:
-            # Hasil kosong karena error teknis bukan berarti di luar domain.
-            status = "search_error" if search_errors else "out_of_domain"
+            status = "out_of_domain"
         else:
             status = "not_found"
 
+        ranked = sorted(relevant, key=lambda c: -(c["score"] if c["score"] is not None else -1))
+
+        raw_results = self._unique(
+            heading_results, alias_results, subheading_results, chunk_results)
         timings["retrieval_total"] = clock() - started
 
         return {
-            # found is the only flag the production answer stage should trust.
             "found": found,
             "status": status,
             "domain_relevant": domain_relevant,
-            "retrieval_found": bool(raw_candidates),
+            "retrieval_found": bool(raw_results),
             "context": context,
-            "entity_results": entity_results,
-            "subtopic_results": subtopic_results,
+            "heading_results": heading_results,
+            "alias_results": alias_results,
+            "subheading_results": subheading_results,
             "chunk_results": chunk_results,
-            # Raw alias matches, kept for debugging.
             "alias_hits": alias_hits,
-            # Kegagalan teknis ChromaDB (kosong bila semua pencarian berhasil).
+            "relevant_chunks": relevant,
+            "results": relevant,
+            "top3": ranked[:3],
+            "best_candidate": ranked[0] if ranked else None,
+            "raw_results": raw_results,
             "search_errors": search_errors,
-            # Full, ordered context for answer generation (used by format_context).
-            "relevant_chunks": relevant_chunks,
-            # Relevant, entity-scoped candidates for answer generation.
-            "results": candidates,
-            "top3": candidates[:3],
-            "best_candidate": best_candidate,
-            # Unfiltered matches retained for debugging only.
-            "raw_results": raw_candidates,
-            # Waktu per tahap (detik), untuk mencari bagian yang lambat.
             "timings": timings,
         }

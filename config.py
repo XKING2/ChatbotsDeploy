@@ -9,6 +9,9 @@ load_dotenv(override=True)
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GEMINI_API_KEY_1 = os.getenv("GEMINI_API_KEY_1")
 GEMINI_API_KEY_2 = os.getenv("GEMINI_API_KEY_2")
+GEMINI_API_KEY_3 = os.getenv("GEMINI_API_KEY_3")
+GEMINI_API_KEY_4 = os.getenv("GEMINI_API_KEY_4")
+GEMINI_API_KEY_5 = os.getenv("GEMINI_API_KEY_5")
 
 EMBEDDING_MODEL_1 = os.getenv("EMBEDDING_MODEL_1")
 EMBEDDING_MODEL_2 = os.getenv("EMBEDDING_MODEL_2")
@@ -59,7 +62,7 @@ MAX_CHUNK_SIZE = 1200
 CHUNK_OVERLAP = 150
 
 CHUNK_COLLECTION_NAME = "knowledge_chunks"
-ENTITY_COLLECTION_NAME = "knowledge_entities"
+HEADING_COLLECTION_NAME = "knowledge_headings"
 
 TOP_K = 5
 

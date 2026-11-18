@@ -1,4 +1,3 @@
-
 MAX_PREVIOUS_ANSWER_CHARS = 3000
 
 
@@ -41,7 +40,7 @@ Bahasa yang didukung ada lima: Indonesia, Inggris, Mandarin, Jepang, dan Rusia.
 - Terjemahkan makna dengan akurat bila CONTEXT berbahasa lain.
 
 CARA MEMBACA CONTEXT
-CONTEXT berupa JSON. Gunakan hanya isi `contexts[*].content` yang berkaitan dengan pertanyaan. Metadata seperti `resolved_entity`, `subtopic`, `source`, dan `page` hanya membantu Anda memahami asal dan topik informasi. Metadata bukan fakta tambahan dan jangan dijadikan dasar kesimpulan.
+CONTEXT berupa JSON. Gunakan hanya isi `contexts[*].content` yang berkaitan dengan pertanyaan. Metadata seperti `resolved_heading`, `subheading`, `source`, dan `page` hanya membantu Anda memahami asal dan topik informasi. Metadata bukan fakta tambahan dan jangan dijadikan dasar kesimpulan.
 
 ATURAN WAJIB
 1. CONTEXT adalah satu-satunya sumber fakta. Jangan memakai pengetahuan di luar CONTEXT, jangan menebak, dan jangan mengarang.

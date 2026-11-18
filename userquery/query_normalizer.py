@@ -2,14 +2,26 @@ import re
 import unicodedata
 
 
+# ============================================================
+# KOREKSI TYPO DAN BAHASA INFORMAL INDONESIA
+# ============================================================
+
 WORD_REPLACEMENTS = {
+    # Typo umum
     "infromasi": "informasi",
     "informsi": "informasi",
     "informasih": "informasi",
     "pengertianya": "pengertiannya",
     "pengertin": "pengertian",
-    "goldan": "golden",
+    "persyaratn": "persyaratan",
+    "persyaratanx": "persyaratan",
+
+    # Istilah imigrasi
     "viza": "visa",
+    "pasport": "paspor",
+    "passport": "paspor",
+
+    # Bahasa informal Indonesia
     "gimana": "bagaimana",
     "gmn": "bagaimana",
     "knp": "kenapa",
@@ -25,93 +37,68 @@ WORD_REPLACEMENTS = {
     "yg": "yang",
     "dgn": "dengan",
     "utk": "untuk",
-    "dr": "dari",
     "krn": "karena",
     "sy": "saya",
     "sya": "saya",
     "aja": "saja",
     "gitu": "begitu",
-    "tu": "itu",
-    "nih": "",
-    "sih": "",
-    "dong": "",
-    "deh": "",
 }
 
 
-ENGLISH_INTENT_EXPANSIONS = {
-    "extend": "perpanjang perpanjangan",
-    "extending": "perpanjang perpanjangan",
-    "extension": "perpanjang perpanjangan",
-    "renew": "perpanjang perpanjangan",
-    "renewal": "perpanjang perpanjangan",
-    "prolong": "perpanjang perpanjangan",
-    "apply": "pembuatan pendaftaran",
-    "application": "pembuatan pendaftaran",
-    "cost": "biaya tarif",
-    "costs": "biaya tarif",
-    "fee": "biaya tarif",
-    "fees": "biaya tarif",
-    "price": "biaya tarif",
-    "tariff": "biaya tarif",
-    "requirement": "persyaratan syarat",
-    "requirements": "persyaratan syarat",
-    "procedure": "prosedur mekanisme",
-    "procedures": "prosedur mekanisme",
-    "lost": "hilang",
-    "damaged": "rusak",
-}
+# ============================================================
+# NORMALISASI
+# ============================================================
 
+def normalize_query(query: str) -> str:
+    """
+    Normalisasi pertanyaan pengguna tanpa mengubah bahasa asli.
 
-def normalize_query(text: str) -> str:
-    if not isinstance(text, str):
+    Mendukung:
+    - Indonesia
+    - English
+    - Mandarin
+    - Japanese
+    - Russian
+
+    Tidak melakukan:
+    - Penerjemahan otomatis
+    - Penambahan ekspansi kata
+    - Penghapusan kata penting
+    """
+
+    if not isinstance(query, str):
         return ""
 
-    text = unicodedata.normalize("NFKC", text)
-    text = text.strip()
+    query = unicodedata.normalize("NFKC", query)
+    query = query.strip()
 
-    if not text:
+    if not query:
         return ""
 
-    text = re.sub(r"\s+", " ", text)
+    # Normalisasi whitespace
+    query = re.sub(r"\s+", " ", query)
 
-    # Normalisasi tanda baca berulang.
-    text = re.sub(r"([!?.,])\1+", r"\1", text)
+    # Normalisasi karakter berulang
+    query = re.sub(r"([!?.,])\1+", r"\1", query)
 
-    # Ganti variasi kata yang sudah dikenal.
-    # Pencocokan per kata agar tidak mengubah bagian kata lain.
+    # Koreksi kata berdasarkan kecocokan satu kata utuh
     def replace_word(match):
         word = match.group(0)
         replacement = WORD_REPLACEMENTS.get(word.casefold())
 
-        if replacement is None:
-            return word
+        if replacement:
+            return replacement
 
-        return replacement
+        return word
 
-    text = re.sub(
+    query = re.sub(
         r"[^\W_]+(?:[-'][^\W_]+)*",
         replace_word,
-        text,
-        flags=re.UNICODE,
+        query,
+        flags=re.UNICODE
     )
 
-    # Rapikan spasi setelah kata yang dihapus.
-    text = re.sub(r"\s+", " ", text).strip()
-    text = re.sub(r"\s+([,.!?;:])", r"\1", text)
+    # Rapikan spasi sebelum tanda baca
+    query = re.sub(r"\s+([,.!?;:])", r"\1", query)
 
-    # Tambahkan istilah Indonesia untuk kata niat bahasa Inggris (tanpa
-    # menghapus kata aslinya, dan tanpa duplikasi).
-    tokens = [t.casefold() for t in re.findall(r"[^\W_]+", text, flags=re.UNICODE)]
-    extras = []
-    for token in tokens:
-        expansion = ENGLISH_INTENT_EXPANSIONS.get(token)
-        if not expansion:
-            continue
-        for word in expansion.split():
-            if word not in tokens and word not in extras:
-                extras.append(word)
-    if extras:
-        text = f"{text} {' '.join(extras)}"
-
-    return text
+    return query.strip()

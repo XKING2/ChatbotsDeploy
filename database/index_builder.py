@@ -1,446 +1,513 @@
 
 import json
 import os
+import tempfile
 
 from config import KNOWLEDGE_INDEX_PATH
-from database.hashing import compute_hash
-from database.entity_builder import (
-    build_entity_embedding_text,
-    build_subtopic_embedding_text,
-)
-from database.heading_prompt import (
-    build_heading_description,
-    build_heading_examples,
-)
 
-try:
-    from database.chroma_db import get_aliases
-except ImportError:
-    get_aliases = None
-
-def load_existing_index():
-    if not os.path.exists(KNOWLEDGE_INDEX_PATH):
-        return {"entities": []}
-
-    try:
-        with open(KNOWLEDGE_INDEX_PATH, "r", encoding="utf-8") as f:
-            data = json.load(f)
-
-        if not isinstance(data, dict):
-            return {"entities": []}
-
-        if not isinstance(data.get("entities"), list):
-            data["entities"] = []
-
-        return data
-
-    except (json.JSONDecodeError, OSError) as exc:
-        print(f"knowledge_index.json tidak dapat dibaca ({exc}).")
-
-        backup_path = KNOWLEDGE_INDEX_PATH + ".corrupted"
-
-        try:
-            os.replace(KNOWLEDGE_INDEX_PATH, backup_path)
-            print(f"File lama dipindahkan ke: {backup_path}")
-        except OSError:
-            pass
-
-        return {"entities": []}
+from database.heading_builder import collect_headings
+from database.chroma_db import get_aliases
 
 
-def _index_chunks_by_subtopic(chunks):
-    result = {}
+# =========================================================
+# CONFIGURATION
+# =========================================================
 
-    for chunk in chunks or []:
-        sid = (chunk.get("subtopic_id") or "").strip()
-        cid = (chunk.get("content_chunk_id") or "").strip()
-
-        if not sid or not cid:
-            continue
-
-        result.setdefault(sid, []).append({
-            "content_chunk_id": cid,
-            "content_hash": chunk.get("content_hash"),
-            "chunk_index": chunk.get("chunk_index"),
-            "total_chunks": chunk.get("total_chunks"),
-        })
-
-    for values in result.values():
-        values.sort(key=lambda x: x.get("chunk_index") or 0)
-
-    return result
+INDEX_VERSION = 2
 
 
-def _clean_aliases(aliases, original_name=None):
-    """Bersihkan alias, hilangkan duplikat, dan kecualikan nama aslinya."""
+# =========================================================
+# NORMALIZATION
+# =========================================================
+
+def normalize_text(value):
+    if not isinstance(value, str):
+        return ""
+
+    return " ".join(value.split())
+
+
+def clean_aliases(aliases, original_name=None):
+    """
+    Membersihkan alias dan menghilangkan duplikat.
+    """
+
+    if not isinstance(aliases, list):
+        return []
+
     cleaned = []
     seen = set()
 
     if original_name:
         seen.add(original_name.strip().casefold())
 
-    if not isinstance(aliases, list):
-        return cleaned
-
     for alias in aliases:
         if not isinstance(alias, str):
             continue
 
-        alias = alias.strip()
+        alias = normalize_text(alias)
+
+        if not alias:
+            continue
+
         key = alias.casefold()
 
-        if alias and key not in seen:
-            cleaned.append(alias)
-            seen.add(key)
+        if key in seen:
+            continue
 
-    return cleaned
+        cleaned.append(alias)
+        seen.add(key)
 
-
-def _aliases_from_chroma(entity_id):
-    """Ambil alias entity saja; jangan campur alias subtopic."""
-    if get_aliases is None:
-        return []
-
-    try:
-        data = get_aliases(entity_id) or {}
-        metadatas = data.get("metadatas") or []
-        ids = data.get("ids") or []
-        aliases = []
-
-        for index, metadata in enumerate(metadatas):
-            if not isinstance(metadata, dict):
-                continue
-
-            record_id = ids[index] if index < len(ids) else ""
-            is_subtopic_alias = (
-                metadata.get("alias_scope") == "subtopic"
-                or bool(metadata.get("subtopic_id"))
-                or "::subtopic::" in str(record_id)
-            )
-            if is_subtopic_alias:
-                continue
-
-            value = (metadata.get("alias") or "").strip()
-            if value:
-                aliases.append(value)
-
-        return _clean_aliases(aliases)
-
-    except Exception as exc:
-        print(
-            f"Peringatan: gagal membaca alias Chroma "
-            f"untuk {entity_id}: {exc}"
-        )
-        return []
+    return sorted(cleaned, key=str.casefold)
 
 
-def _subtopic_aliases_from_chroma(entity_id, subtopic_id):
-    """Ambil alias untuk satu subtopic tanpa memanggil API Gemini."""
-    if get_aliases is None:
-        return []
+# =========================================================
+# CHROMADB ALIAS
+# =========================================================
+
+def get_heading_aliases(heading_id):
+    """
+    Mengambil alias dari ChromaDB.
+
+    Alias dipisahkan menjadi:
+    - heading aliases
+    - subheading aliases
+    """
 
     try:
-        data = get_aliases(entity_id) or {}
-        metadatas = data.get("metadatas") or []
-        ids = data.get("ids") or []
-        aliases = []
-        target_id = str(subtopic_id)
-
-        for index, metadata in enumerate(metadatas):
-            if not isinstance(metadata, dict):
-                continue
-
-            record_id = str(ids[index]) if index < len(ids) else ""
-            alias_scope = metadata.get("alias_scope")
-            stored_subtopic_id = str(metadata.get("subtopic_id") or "")
-
-            # Format ID alias yang digunakan main.py:
-            # entity_id::subtopic::subtopic_id::alias::hash
-            id_matches = f"::subtopic::{target_id}::alias::" in record_id
-            is_subtopic_alias = (
-                alias_scope == "subtopic"
-                or bool(stored_subtopic_id)
-                or "::subtopic::" in record_id
-            )
-
-            if not is_subtopic_alias:
-                continue
-            if stored_subtopic_id:
-                if stored_subtopic_id != target_id:
-                    continue
-            elif not id_matches:
-                continue
-
-            value = metadata.get("alias")
-            if isinstance(value, str) and value.strip():
-                aliases.append(value.strip())
-
-        return _clean_aliases(aliases)
+        data = get_aliases(heading_id) or {}
 
     except Exception as exc:
-        print(
-            f"Peringatan: gagal membaca alias subtopic "
-            f"{subtopic_id} dari Chroma: {exc}"
-        )
-        return []
+        raise RuntimeError(
+            f"Gagal mengambil alias heading {heading_id}: {exc}"
+        ) from exc
 
+    metadatas = data.get("metadatas") or []
 
-def _merge_aliases(entity_id, old_entry=None):
-    """Prioritaskan alias Chroma; gunakan JSON lama jika tidak tersedia."""
-    aliases = _aliases_from_chroma(entity_id)
+    heading_aliases = []
+    subheading_aliases = {}
 
-    if not aliases and isinstance(old_entry, dict):
-        aliases = old_entry.get("aliases", [])
+    for metadata in metadatas:
 
-    entity_name = (
-        old_entry.get("entity")
-        if isinstance(old_entry, dict)
-        else None
+        if not isinstance(metadata, dict):
+            continue
+
+        alias = metadata.get("alias")
+
+        if not isinstance(alias, str):
+            continue
+
+        alias = normalize_text(alias)
+
+        if not alias:
+            continue
+
+        alias_scope = metadata.get("alias_scope")
+
+        if alias_scope == "heading":
+            heading_aliases.append(alias)
+
+        elif alias_scope == "subheading":
+
+            subheading_id = str(
+                metadata.get("subheading_id") or ""
+            ).strip()
+
+            if not subheading_id:
+                continue
+
+            subheading_aliases.setdefault(
+                subheading_id, []
+            ).append(alias)
+
+    return (
+        heading_aliases,
+        subheading_aliases,
     )
 
-    return _clean_aliases(aliases, entity_name)
 
+# =========================================================
+# CHUNK GROUPING
+# =========================================================
 
-def _build_entities_from_sections(sections):
-    entities = {}
+def index_chunks_by_subheading(chunks):
+    """
+    Mengelompokkan referensi chunk berdasarkan subheading_id.
 
-    for section in sections:
-        entity = (section.get("entity") or "").strip()
-        entity_id = (section.get("entity_id") or "").strip()
-
-        if entity and entity_id:
-            entities[entity_id] = {
-                "entity_id": entity_id,
-                "entity": entity,
-            }
-
-    return entities
-
-
-def _build_subtopics_for_entity(
-    entity_id,
-    entity,
-    sections,
-    chunks_by_subtopic,
-    old_entry=None,
-):
-    old_by_id = {}
-
-    if isinstance(old_entry, dict):
-        for item in old_entry.get("subtopics", []) or []:
-            if isinstance(item, dict) and item.get("subtopic_id"):
-                old_by_id[item["subtopic_id"]] = item
+    Tidak mengambil atau menyimpan isi chunk maupun embedding.
+    """
 
     grouped = {}
+    seen_ids = set()
+
+    for chunk in chunks or []:
+
+        if not isinstance(chunk, dict):
+            continue
+
+        subheading_id = str(
+            chunk.get("subheading_id") or ""
+        ).strip()
+
+        chunk_id = str(
+            chunk.get("content_chunk_id") or ""
+        ).strip()
+
+        if not subheading_id or not chunk_id:
+            continue
+
+        # Hindari referensi chunk ganda.
+        if chunk_id in seen_ids:
+            continue
+
+        seen_ids.add(chunk_id)
+
+        grouped.setdefault(
+            subheading_id, []
+        ).append({
+            "content_chunk_id": chunk_id,
+            "chunk_index": chunk.get("chunk_index", 0),
+            "total_chunks": chunk.get("total_chunks", 0),
+            "source_id": chunk.get("source_id"),
+            "source_file": chunk.get("source_file"),
+            "page_start": chunk.get("page_start"),
+            "page_end": chunk.get("page_end"),
+        })
+
+    for items in grouped.values():
+        items.sort(
+            key=lambda item: item.get("chunk_index", 0)
+        )
+
+    return grouped
+
+
+# =========================================================
+# SECTION GROUPING
+# =========================================================
+
+def collect_section_details(sections):
+    """
+    Menghubungkan section dengan struktur heading
+    dan subheading.
+    """
+
+    heading_groups = collect_headings(sections)
+
+    section_lookup = {}
 
     for section in sections:
-        if (section.get("entity") or "").strip() != entity:
+
+        heading_id = section.get("heading_id")
+        subheading_id = section.get("subheading_id")
+
+        if not heading_id or not subheading_id:
             continue
 
-        name = (section.get("subtopic") or "").strip()
-        sid = (section.get("subtopic_id") or "").strip()
+        key = (heading_id, subheading_id)
 
-        if not name or not sid:
-            continue
+        section_lookup.setdefault(key, []).append(section)
 
-        item = grouped.setdefault(sid, {
-            "subtopic_id": sid,
-            "subtopic": name,
-            "_content_parts": [],
-        })
+    for heading_data in heading_groups:
 
-        content = (section.get("content") or "").strip()
+        heading_id = heading_data["heading_id"]
 
-        if content:
-            item["_content_parts"].append(content)
+        for subheading_id, subheading_data in (
+            heading_data["subheadings"].items()
+        ):
 
-    # Alias tidak digenerate saat membangun knowledge index.
-    # Baca dari ChromaDB, lalu fallback ke index JSON lama.
-    results = []
-
-    for sid, item in grouped.items():
-        old = old_by_id.get(sid, {})
-        subtopic_name = item["subtopic"]
-
-        new_aliases = _subtopic_aliases_from_chroma(entity_id, sid)
-
-        # Jika alias tidak ditemukan di ChromaDB, pertahankan alias JSON lama.
-        if not new_aliases:
-            new_aliases = old.get("aliases", [])
-
-        clean_aliases = _clean_aliases(
-            new_aliases,
-            original_name=subtopic_name,
-        )
-
-        description = build_heading_description(
-            subtopic_name,
-            entity,
-        )
-
-        examples = build_heading_examples(
-            subtopic_name,
-            entity,
-        )
-
-        subtopic_text = build_subtopic_embedding_text(
-            entity=entity,
-            subtopic=subtopic_name,
-            description=description,
-            examples=examples,
-        )
-
-        content = " ".join(item["_content_parts"]).strip()
-
-        results.append({
-            "subtopic_id": sid,
-            "subtopic": subtopic_name,
-            "aliases": clean_aliases,
-            "subtopic_hash": compute_hash(content),
-            "description": description,
-            "examples": examples,
-            "embedding_text": subtopic_text,
-            "content_chunks": chunks_by_subtopic.get(sid, []),
-        })
-
-        print(
-            f"  SUBTOPIC: {subtopic_name} "
-            f"| aliases={len(clean_aliases)}"
-        )
-
-    # Pertahankan subtopic lama yang tidak ada di section saat ini.
-    current_ids = {item["subtopic_id"] for item in results}
-
-    for sid, old in old_by_id.items():
-        if sid not in current_ids:
-            results.append(old)
-            print(
-                f"  SUBTOPIC LAMA DIPERTAHANKAN: "
-                f"{old.get('subtopic', sid)}"
+            subheading_data["_sections"] = section_lookup.get(
+                (heading_id, subheading_id), []
             )
 
+    return heading_groups
+
+
+# =========================================================
+# SUBHEADING INDEX
+# =========================================================
+
+def build_subheadings(
+    heading_data,
+    chunks_by_subheading,
+    subheading_aliases,
+):
+    """
+    Membangun metadata subheading dan referensi chunk.
+    """
+
+    results = []
+
+    for subheading_id, data in (
+        heading_data.items()
+    ):
+
+        subheading = normalize_text(
+            data.get("subheading")
+        )
+
+        if not subheading:
+            continue
+
+        aliases = clean_aliases(
+            subheading_aliases.get(subheading_id, []),
+            original_name=subheading,
+        )
+
+        content_chunks = chunks_by_subheading.get(
+            subheading_id, []
+        )
+
+        results.append({
+            "subheading_id": subheading_id,
+            "subheading": subheading,
+            "aliases": aliases,
+            "content_chunks": content_chunks,
+        })
+
     results.sort(
-        key=lambda x: (x.get("subtopic") or "").casefold()
+        key=lambda item: item["subheading"].casefold()
     )
 
     return results
 
 
-def build_knowledge_index(sections, chunks):
-    if not sections:
-        print("Tidak ada section. Knowledge index tidak diubah.")
-        return
+# =========================================================
+# HEADING INDEX
+# =========================================================
 
-    existing = load_existing_index()
+def build_heading_index(
+    heading_data,
+    chunks_by_subheading,
+):
+    """
+    Membangun satu heading beserta subheading-nya.
+    """
 
-    old_by_id = {
-        item.get("entity_id"): item
-        for item in existing.get("entities", [])
-        if isinstance(item, dict) and item.get("entity_id")
+    heading_id = heading_data["heading_id"]
+
+    heading = normalize_text(
+        heading_data["heading"]
+    )
+
+    heading_aliases, subheading_aliases = (
+        get_heading_aliases(heading_id)
+    )
+
+    heading_aliases = clean_aliases(
+        heading_aliases,
+        original_name=heading,
+    )
+
+    subheadings = build_subheadings(
+        heading_data=heading_data["subheadings"],
+        chunks_by_subheading=chunks_by_subheading,
+        subheading_aliases=subheading_aliases,
+    )
+
+    return {
+        "heading_id": heading_id,
+        "heading": heading,
+        "aliases": heading_aliases,
+        "subheadings": subheadings,
     }
 
-    entities = _build_entities_from_sections(sections)
-    chunks_by_subtopic = _index_chunks_by_subtopic(chunks)
 
-    entity_index = []
+# =========================================================
+# JSON STORAGE
+# =========================================================
 
-    for entity_id, data in entities.items():
-        entity = data["entity"]
-        old = old_by_id.get(entity_id)
+def save_knowledge_index(knowledge):
+    """
+    Menyimpan JSON secara atomik menggunakan
+    temporary file dan os.replace().
+    """
 
-        aliases = _merge_aliases(entity_id, old)
+    path = os.path.abspath(
+        os.fspath(KNOWLEDGE_INDEX_PATH)
+    )
 
-        subtopics = _build_subtopics_for_entity(
-            entity_id=entity_id,
-            entity=entity,
-            sections=sections,
-            chunks_by_subtopic=chunks_by_subtopic,
-            old_entry=old,
+    directory = os.path.dirname(path)
+
+    os.makedirs(directory, exist_ok=True)
+
+    temp_path = None
+
+    try:
+
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=directory,
+            prefix=".knowledge_index_",
+            suffix=".tmp",
+            delete=False,
+        ) as file:
+
+            temp_path = file.name
+
+            json.dump(
+                knowledge,
+                file,
+                ensure_ascii=False,
+                indent=4,
+            )
+
+            file.flush()
+            os.fsync(file.fileno())
+
+        os.replace(temp_path, path)
+
+    except Exception:
+
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except OSError:
+                pass
+
+        raise
+
+
+# =========================================================
+# MAIN BUILDER
+# =========================================================
+
+def build_knowledge_index(sections, chunks):
+    """
+    Membangun knowledge_index.json.
+
+    Input:
+        sections: hasil build_sections()
+        chunks: hasil chunk_sections()
+
+    Output:
+        knowledge_index.json
+
+    Tanggung jawab:
+        - Menyusun struktur heading.
+        - Menyusun struktur subheading.
+        - Mengambil alias dari ChromaDB.
+        - Menghubungkan referensi content chunks.
+        - Menyimpan indeks struktural dalam JSON.
+
+    Tidak melakukan:
+        - Membuat embedding.
+        - Menyimpan embedding.
+        - Membuat embedding text.
+        - Menghitung hash semantic.
+        - Melakukan semantic retrieval.
+        - Mempertahankan data lama.
+    """
+
+    if not sections:
+        raise ValueError(
+            "Sections kosong. Knowledge index tidak dibuat."
         )
 
-        subtopic_names = [
-            item.get("subtopic", "")
-            for item in subtopics
-        ]
+    print("\n" + "=" * 65)
+    print("MEMBANGUN KNOWLEDGE INDEX")
+    print("=" * 65)
 
-        entity_text = build_entity_embedding_text(
-            entity,
-            aliases=aliases,
-            subtopics=subtopic_names,
+    # 1. Kelompokkan chunk.
+    chunks_by_subheading = index_chunks_by_subheading(
+        chunks
+    )
+
+    # 2. Kelompokkan heading dan subheading.
+    heading_groups = collect_section_details(
+        sections
+    )
+
+    if not heading_groups:
+        raise ValueError(
+            "Tidak ditemukan heading yang valid."
         )
 
-        entry = {
-            "entity_id": entity_id,
-            "entity": entity,
-            "entity_hash": compute_hash(entity_text),
-            "aliases": aliases,
-            "aliases_generated": bool(aliases),
-            "embedding_text": entity_text,
-            "subtopics": subtopics,
-        }
+    # 3. Bangun indeks heading.
+    heading_index = []
 
-        entity_index.append(entry)
+    for heading_data in heading_groups:
 
-        alias_total = sum(
-            len(item.get("aliases", []))
-            for item in subtopics
+        heading_item = build_heading_index(
+            heading_data=heading_data,
+            chunks_by_subheading=chunks_by_subheading,
+        )
+
+        heading_index.append(heading_item)
+
+        subheading_count = len(
+            heading_item["subheadings"]
+        )
+
+        heading_alias_count = len(
+            heading_item["aliases"]
+        )
+
+        subheading_alias_count = sum(
+            len(item["aliases"])
+            for item in heading_item["subheadings"]
         )
 
         print(
-            f"ENTITY: {entity} "
-            f"| aliases={len(aliases)} "
-            f"| subtopics={len(subtopics)} "
-            f"| subtopic_aliases={alias_total}"
+            f"HEADING: {heading_item['heading']} "
+            f"| subheadings={subheading_count} "
+            f"| aliases={heading_alias_count} "
+            f"| subheading_aliases={subheading_alias_count}"
         )
 
-    # Pertahankan entity lama yang tidak ada dalam batch section.
-    current_ids = set(entities)
-
-    for entity_id, old in old_by_id.items():
-        if entity_id not in current_ids:
-            entity_index.append(old)
-            print(
-                f"ENTITY LAMA DIPERTAHANKAN: "
-                f"{old.get('entity', entity_id)}"
-            )
-
-    entity_index.sort(
-        key=lambda x: (x.get("entity") or "").casefold()
+    # 4. Urutkan heading.
+    heading_index.sort(
+        key=lambda item: item["heading"].casefold()
     )
 
-    knowledge = {"entities": entity_index}
-
-    directory = os.path.dirname(KNOWLEDGE_INDEX_PATH)
-
-    if directory:
-        os.makedirs(directory, exist_ok=True)
-
-    tmp_path = KNOWLEDGE_INDEX_PATH + ".tmp"
-
-    with open(tmp_path, "w", encoding="utf-8") as f:
-        json.dump(
-            knowledge,
-            f,
-            ensure_ascii=False,
-            indent=4,
-        )
-
-    os.replace(tmp_path, KNOWLEDGE_INDEX_PATH)
-
-    total_subtopics = sum(
-        len(item.get("subtopics", []))
-        for item in entity_index
+    # 5. Hitung statistik.
+    total_subheadings = sum(
+        len(item["subheadings"])
+        for item in heading_index
     )
 
-    total_subtopic_aliases = sum(
-        len(subtopic.get("aliases", []))
-        for item in entity_index
-        for subtopic in item.get("subtopics", [])
+    total_heading_aliases = sum(
+        len(item["aliases"])
+        for item in heading_index
     )
 
-    print("=" * 70)
-    print(f"Jumlah entity: {len(entity_index)}")
-    print(f"Jumlah subtopic: {total_subtopics}")
-    print(f"Jumlah alias subtopic: {total_subtopic_aliases}")
-    print(f"Knowledge index tersimpan: {KNOWLEDGE_INDEX_PATH}")
-    print("=" * 70)
+    total_subheading_aliases = sum(
+        len(subheading["aliases"])
+        for item in heading_index
+        for subheading in item["subheadings"]
+    )
+
+    total_chunks = sum(
+        len(subheading["content_chunks"])
+        for item in heading_index
+        for subheading in item["subheadings"]
+    )
+
+    # 6. Bentuk struktur JSON.
+    knowledge = {
+        "version": INDEX_VERSION,
+        "headings": heading_index,
+        "statistics": {
+            "total_headings": len(heading_index),
+            "total_subheadings": total_subheadings,
+            "total_heading_aliases": total_heading_aliases,
+            "total_subheading_aliases": total_subheading_aliases,
+            "total_chunks": total_chunks,
+        },
+    }
+
+    # 7. Simpan JSON.
+    save_knowledge_index(knowledge)
+
+    # 8. Tampilkan ringkasan.
+    print("-" * 65)
+    print(f"Jumlah heading          : {len(heading_index)}")
+    print(f"Jumlah subheading       : {total_subheadings}")
+    print(f"Alias heading           : {total_heading_aliases}")
+    print(f"Alias subheading        : {total_subheading_aliases}")
+    print(f"Referensi chunks        : {total_chunks}")
+    print(f"Knowledge index         : {KNOWLEDGE_INDEX_PATH}")
+    print("=" * 65)
+
+    return knowledge

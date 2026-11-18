@@ -1,59 +1,228 @@
+
 import json
 import re
-import time
 import threading
+import time
+
+import config
 
 from google import genai
-import config
-from config import GEMINI_API_KEY, LLM_MODEL
+from google.genai import types
 
 
-# ============================================================
+# =========================================================
 # CONFIGURATION
-# ============================================================
+# =========================================================
 
-GEMINI_API_KEY_2 = getattr(config, "GEMINI_API_KEY_2", None)
-
-API_KEYS = [
+API_KEYS = list(dict.fromkeys(
     key.strip()
-    for key in (GEMINI_API_KEY, GEMINI_API_KEY_2)
+    for key in [
+        getattr(config, "GEMINI_API_KEY", None),
+        getattr(config, "GEMINI_API_KEY_2", None),
+    ]
     if isinstance(key, str) and key.strip()
-]
+))
 
-# Maksimal 20 item alias dalam satu request API.
+LLM_MODEL = config.LLM_MODEL
+
 BATCH_SIZE = 20
 
-# Setelah 5 percobaan request API, tunggu 90 detik.
 MAX_CALLS_BEFORE_COOLDOWN = 5
 COOLDOWN_SECONDS = 90
 
+MAX_RETRIES_PER_KEY = 3
+INITIAL_RETRY_DELAY = 4
+MAX_RETRY_DELAY = 30
+
+MAX_ALIASES = 20
+
 ALIAS_LANGUAGES = [
-    "Bahasa Indonesia",
+    "Indonesian",
     "English",
     "Mandarin Chinese",
     "Japanese",
     "Russian",
 ]
 
-# State dipakai bersama oleh generator entity dan subtopic.
-_call_count = 0
-_call_lock = threading.Lock()
-_cooldown_lock = threading.Lock()
 
-if not API_KEYS:
-    raise ValueError(
-        "GEMINI_API_KEY belum diisi di config.py"
+# =========================================================
+# GLOBAL STATE
+# =========================================================
+
+_clients = {}
+
+_client_lock = threading.Lock()
+_rate_limit_lock = threading.Lock()
+
+_call_count = 0
+_next_allowed_time = 0
+
+
+# =========================================================
+# GEMINI CLIENT
+# =========================================================
+
+def _get_client(api_key):
+    """
+    Membuat dan menyimpan client Gemini.
+
+    Client digunakan kembali agar tidak perlu
+    membuat koneksi baru untuk setiap request.
+    """
+
+    with _client_lock:
+
+        if api_key not in _clients:
+            _clients[api_key] = genai.Client(
+                api_key=api_key
+            )
+
+        return _clients[api_key]
+
+
+# =========================================================
+# RATE LIMITER
+# =========================================================
+
+def _wait_and_register_call():
+    """
+    Membatasi jumlah request secara global.
+
+    Maksimal 5 request sebelum cooldown 90 detik.
+    Penghitungan dan penguncian dilakukan secara atomik.
+    """
+
+    global _call_count
+    global _next_allowed_time
+
+    while True:
+
+        with _rate_limit_lock:
+
+            now = time.monotonic()
+
+            if now < _next_allowed_time:
+
+                wait_time = _next_allowed_time - now
+
+            elif _call_count >= MAX_CALLS_BEFORE_COOLDOWN:
+
+                _call_count = 0
+
+                _next_allowed_time = (
+                    now + COOLDOWN_SECONDS
+                )
+
+                wait_time = COOLDOWN_SECONDS
+
+                print(
+                    f"[ALIAS] Cooldown "
+                    f"{COOLDOWN_SECONDS} detik."
+                )
+
+            else:
+
+                _call_count += 1
+
+                return
+
+        time.sleep(wait_time)
+
+
+# =========================================================
+# ERROR HANDLING
+# =========================================================
+
+def _get_error_code(error):
+    """
+    Mengambil HTTP status code dari exception Gemini.
+    """
+
+    code = getattr(error, "code", None)
+
+    if code is None:
+        code = getattr(error, "status_code", None)
+
+    if code is None:
+        response = getattr(error, "response", None)
+
+        if response is not None:
+            code = getattr(response, "status_code", None)
+
+    try:
+        return int(code) if code is not None else None
+
+    except (TypeError, ValueError):
+        return None
+
+
+def _is_retryable_error(error):
+    """
+    Menentukan apakah error dapat dicoba kembali.
+    """
+
+    code = _get_error_code(error)
+
+    if code in (408, 429, 500, 502, 503, 504):
+        return True
+
+    message = str(error).upper()
+
+    temporary_errors = (
+        "UNAVAILABLE",
+        "RESOURCE_EXHAUSTED",
+        "TOO MANY REQUESTS",
+        "INTERNAL SERVER ERROR",
+        "SERVICE UNAVAILABLE",
+        "DEADLINE EXCEEDED",
+        "TIMED OUT",
+        "TIMEOUT",
+        "CONNECTION RESET",
+        "CONNECTION ERROR",
+    )
+
+    return any(
+        keyword in message
+        for keyword in temporary_errors
     )
 
 
-# ============================================================
-# API CLIENT / FAILOVER
-# ============================================================
+def _retry_delay(attempt, error):
+    """
+    Menghitung waktu tunggu exponential backoff.
+    """
 
-def _clean_json_response(text):
-    """Membersihkan JSON dari markdown code fence."""
-    text = (text or "").strip()
+    code = _get_error_code(error)
 
+    if code == 429:
+        return MAX_RETRY_DELAY
+
+    delay = INITIAL_RETRY_DELAY * (2 ** attempt)
+
+    return min(
+        delay,
+        MAX_RETRY_DELAY
+    )
+
+
+# =========================================================
+# JSON RESPONSE
+# =========================================================
+
+def _clean_json_response(response_text):
+    """
+    Membersihkan dan memvalidasi JSON dari Gemini.
+    """
+
+    if not isinstance(response_text, str):
+        return None
+
+    text = response_text.strip()
+
+    if not text:
+        return None
+
+    # Menghapus Markdown code fence.
     text = re.sub(
         r"^```(?:json)?\s*",
         "",
@@ -61,367 +230,418 @@ def _clean_json_response(text):
         flags=re.IGNORECASE,
     )
 
-    text = re.sub(r"\s*```$", "", text)
+    text = re.sub(
+        r"\s*```$",
+        "",
+        text,
+    )
 
-    return text.strip()
+    try:
+        result = json.loads(text)
+
+    except json.JSONDecodeError:
+        return None
+
+    if not isinstance(result, dict):
+        return None
+
+    return result
 
 
-def _wait_if_needed():
-    """
-    Menunggu 90 detik setiap 5 percobaan API.
-    Lock mencegah beberapa thread memulai cooldown bersamaan.
-    """
-    global _call_count
-
-    with _cooldown_lock:
-        with _call_lock:
-            should_wait = (
-                _call_count >= MAX_CALLS_BEFORE_COOLDOWN
-            )
-
-            if should_wait:
-                _call_count = 0
-
-        if should_wait:
-            print(
-                f"[AliasGenerator] Cooldown "
-                f"{COOLDOWN_SECONDS} detik setelah "
-                f"{MAX_CALLS_BEFORE_COOLDOWN} percobaan API."
-            )
-            time.sleep(COOLDOWN_SECONDS)
-
+# =========================================================
+# GEMINI REQUEST
+# =========================================================
 
 def _generate_content_with_failover(prompt):
     """
-    Mencoba API key secara bergantian jika terjadi error.
+    Mengirim prompt ke Gemini dengan:
 
-    Setiap percobaan request dihitung, termasuk request yang gagal.
+    1. AFC dinonaktifkan.
+    2. Output JSON.
+    3. Retry untuk error sementara.
+    4. Failover ke API key berikutnya.
     """
-    global _call_count
 
-    _wait_if_needed()
+    if not API_KEYS:
 
-    errors = []
+        print(
+            "[ALIAS] Tidak ada Gemini API key tersedia."
+        )
+
+        return None
 
     for key_index, api_key in enumerate(API_KEYS):
-        try:
-            with _call_lock:
-                _call_count += 1
-                current_count = _call_count
 
-            print(
-                f"[AliasGenerator] Request API "
-                f"ke-{current_count} menggunakan key "
-                f"{key_index + 1}/{len(API_KEYS)}"
-            )
+        client = _get_client(api_key)
 
-            client = genai.Client(api_key=api_key)
+        print(
+            f"[ALIAS] Menggunakan API key "
+            f"{key_index + 1}/{len(API_KEYS)}"
+        )
 
-            response = client.models.generate_content(
-                model=LLM_MODEL,
-                contents=prompt,
-            )
+        for attempt in range(MAX_RETRIES_PER_KEY):
 
-            text = _clean_json_response(response.text)
+            try:
 
-            if not text:
-                raise ValueError("Respons Gemini kosong.")
+                # Rate limiter.
+                _wait_and_register_call()
 
-            return text
+                response = client.models.generate_content(
+                    model=LLM_MODEL,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
 
-        except Exception as exc:
-            errors.append(
-                f"Key {key_index + 1}: {exc}"
-            )
+                        # Memastikan respons berupa JSON.
+                        response_mime_type="application/json",
 
-            print(
-                f"[AliasGenerator] Key {key_index + 1} "
-                f"gagal: {exc}"
-            )
+                        # Menonaktifkan Automatic Function Calling.
+                        automatic_function_calling=(
+                            types.AutomaticFunctionCallingConfig(
+                                disable=True
+                            )
+                        ),
 
-            # Key berikutnya dicoba secara otomatis.
-            # Cooldown akan diterapkan sebelum request selanjutnya.
+                        temperature=0.2,
+                    ),
+                )
+
+                response_text = response.text
+
+                result = _clean_json_response(
+                    response_text
+                )
+
+                if result is None:
+
+                    print(
+                        "[ALIAS] Respons Gemini bukan JSON valid."
+                    )
+
+                    # Coba API key berikutnya.
+                    break
+
+                return result
+
+            except Exception as error:
+
+                retryable = _is_retryable_error(error)
+
+                print(
+                    f"[ALIAS] Request gagal: {error}"
+                )
+
+                if not retryable:
+
+                    print(
+                        "[ALIAS] Error tidak dapat di-retry. "
+                        "Mencoba API key berikutnya."
+                    )
+
+                    break
+
+                if attempt == MAX_RETRIES_PER_KEY - 1:
+
+                    print(
+                        "[ALIAS] Batas retry tercapai. "
+                        "Mencoba API key berikutnya."
+                    )
+
+                    break
+
+                wait_time = _retry_delay(
+                    attempt,
+                    error,
+                )
+
+                print(
+                    f"[ALIAS] Retry "
+                    f"{attempt + 1}/{MAX_RETRIES_PER_KEY - 1} "
+                    f"dalam {wait_time} detik."
+                )
+
+                time.sleep(wait_time)
 
     print(
-        "[AliasGenerator] Semua API key gagal: "
-        + " | ".join(errors)
+        "[ALIAS] Semua API key gagal menghasilkan respons."
     )
 
     return None
 
 
-# ============================================================
-# ENTITY ALIASES
-# ============================================================
+# =========================================================
+# TEXT NORMALIZATION
+# =========================================================
 
-def generate_aliases_batch(topic_names):
-    """
-    Membuat alias untuk entity/layanan.
-
-    Input:
-        ["Layanan A", "Layanan B"]
-
-    Output:
-        {
-            "Layanan A": ["alias 1", "alias 2"],
-            "Layanan B": ["alias 3"]
-        }
-    """
-    if not topic_names:
-        return {}
-
-    all_aliases = {}
-
-    for i in range(0, len(topic_names), BATCH_SIZE):
-        batch = topic_names[i:i + BATCH_SIZE]
-
-        print(
-            f"[AliasGenerator] Batch entity "
-            f"{i + 1}-{i + len(batch)} "
-            f"dari {len(topic_names)}"
-        )
-
-        batch_result = _generate_entity_batch(batch)
-
-        # Jika request gagal, nama TIDAK dimasukkan ke hasil.
-        # Pemanggil membedakan "gagal" (tidak ada key, dicoba lagi
-        # pada run berikutnya) dari "tidak ada alias" (list kosong).
-        if batch_result is not None:
-            all_aliases.update(batch_result)
-
-    return all_aliases
-
-
-def _generate_entity_batch(topic_names):
-    topic_list_str = "\n".join(
-        f'{idx + 1}. "{name}"'
-        for idx, name in enumerate(topic_names)
+def _normalize_text(text):
+    return " ".join(
+        str(text or "").split()
     )
 
-    prompt = f"""
-Kamu adalah asisten pembuat alias untuk layanan keimigrasian.
 
-DAFTAR LAYANAN:
-{topic_list_str}
-
-Untuk setiap layanan, buat alias yang mencakup:
-- Singkatan umum Bahasa Indonesia jika benar-benar spesifik.
-- Nama sehari-hari yang merujuk spesifik ke layanan.
-- Istilah relevan dalam:
-{", ".join(ALIAS_LANGUAGES)}
-
-ATURAN:
-1. Jangan memberikan singkatan seperti KITAS, KITAP, VOA,
-   atau ITK kepada layanan umum yang tidak spesifik.
-2. Alias harus membedakan layanan yang mirip.
-3. Hindari istilah terlalu umum atau berpotensi bentrok.
-4. Jangan memasukkan nama asli layanan sebagai alias.
-5. Buat maksimal 20 alias per layanan. Utamakan kualitas.
-6. Gunakan alias yang relevan untuk pencocokan maksud pengguna.
-7. Jangan mengarang prosedur atau fakta keimigrasian.
-
-Jawab HANYA dengan JSON object valid.
-Setiap key harus sama persis dengan nama layanan.
-
-Contoh:
-{{
-  "Nama Layanan A": ["alias 1", "alias 2"],
-  "Nama Layanan B": ["alias 1", "alias 2"]
-}}
-"""
-
-    text = _generate_content_with_failover(prompt)
-
-    if text is None:
-        return None
-
-    try:
-        result = json.loads(text)
-
-        if not isinstance(result, dict):
-            return None
-
-        cleaned = {}
-
-        for name in topic_names:
-            if name not in result:
-                continue
-
-            aliases = result[name]
-
-            if not isinstance(aliases, list):
-                continue
-
-            cleaned[name] = _clean_alias_list(
-                aliases,
-                original_name=name,
-            )
-
-        return cleaned
-
-    except (json.JSONDecodeError, TypeError) as exc:
-        print(
-            f"[AliasGenerator] JSON entity tidak valid: {exc}"
-        )
-        return None
-
-
-# ============================================================
-# SUBTOPIC ALIASES
-# ============================================================
-
-def generate_subtopic_aliases_batch(subtopics):
+def _clean_alias_list(
+    aliases,
+    original_name=None,
+    max_aliases=MAX_ALIASES,
+):
     """
-    Membuat alias subtopic secara batch.
-
-    Input:
-        [
-            {
-                "entity_id": "ent_001",
-                "entity": "Layanan Izin Tinggal",
-                "subtopic_id": "sub_001",
-                "subtopic": "Perpanjangan Izin Tinggal"
-            }
-        ]
-
-    Output:
-        {
-            "ent_001::sub_001": ["alias 1", "alias 2"]
-        }
+    Membersihkan alias dan menghapus duplikat.
     """
-    if not subtopics:
-        return {}
 
-    all_aliases = {}
+    if not isinstance(aliases, list):
+        return []
 
-    for i in range(0, len(subtopics), BATCH_SIZE):
-        batch = subtopics[i:i + BATCH_SIZE]
-
-        print(
-            f"[AliasGenerator] Batch subtopic "
-            f"{i + 1}-{i + len(batch)} "
-            f"dari {len(subtopics)}"
-        )
-
-        batch_result = _generate_subtopic_batch(batch)
-
-        for item in batch:
-            key = (
-                f'{item["entity_id"]}::'
-                f'{item["subtopic_id"]}'
-            )
-
-            # Gagal / key tidak dikembalikan Gemini -> tidak dimasukkan.
-            if batch_result is not None and key in batch_result:
-                all_aliases[key] = batch_result[key]
-
-    return all_aliases
-
-
-def _generate_subtopic_batch(subtopics):
-    """
-    Satu request menangani maksimal BATCH_SIZE subtopic.
-    Identitas entity dan subtopic dipakai untuk menghindari bentrok.
-    """
-    items = []
-
-    for item in subtopics:
-        items.append({
-            "key": (
-                f'{item["entity_id"]}::'
-                f'{item["subtopic_id"]}'
-            ),
-            "entity": item["entity"].strip(),
-            "subtopic": item["subtopic"].strip(),
-        })
-
-    prompt = f"""
-Kamu membuat alias untuk context understanding chatbot
-layanan keimigrasian.
-
-Buat alias untuk setiap pasangan ENTITY dan SUBTOPIC berikut:
-{json.dumps(items, ensure_ascii=False, indent=2)}
-
-Bahasa alias:
-{", ".join(ALIAS_LANGUAGES)}
-
-ATURAN:
-1. Setiap key output harus sama persis dengan key input.
-2. Buat sekitar 5-15 alias yang berkualitas untuk setiap subtopic.
-3. Alias harus merujuk spesifik pada subtopic tersebut.
-4. Sertakan variasi pertanyaan sehari-hari yang wajar.
-5. Sertakan sinonim atau terjemahan relevan dalam bahasa yang diminta.
-6. Jangan memasukkan nama asli subtopic sebagai alias.
-7. Hindari alias generik dan alias yang dapat merujuk ke subtopic lain.
-8. Jangan mengarang prosedur, syarat, biaya, atau fakta.
-9. Jika tidak yakin, kembalikan array kosong.
-10. Jangan menghasilkan lebih dari 20 alias untuk satu subtopic.
-
-Jawab HANYA dengan JSON object valid dalam format:
-{{
-  "entity_id::subtopic_id": ["alias 1", "alias 2"]
-}}
-"""
-
-    text = _generate_content_with_failover(prompt)
-
-    if text is None:
-        return None
-
-    try:
-        result = json.loads(text)
-
-        if not isinstance(result, dict):
-            return None
-
-        cleaned = {}
-
-        for item in items:
-            key = item["key"]
-
-            if key not in result:
-                continue
-
-            aliases = result[key]
-
-            if not isinstance(aliases, list):
-                continue
-
-            cleaned[key] = _clean_alias_list(
-                aliases,
-                original_name=item["subtopic"],
-            )[:20]
-
-        return cleaned
-
-    except (json.JSONDecodeError, TypeError) as exc:
-        print(
-            f"[AliasGenerator] JSON subtopic tidak valid: {exc}"
-        )
-        return None
-
-
-# ============================================================
-# ALIAS CLEANER
-# ============================================================
-
-def _clean_alias_list(aliases, original_name=None):
     cleaned = []
-
     seen = set()
 
-    if original_name:
-        seen.add(original_name.strip().casefold())
+    original_normalized = (
+        _normalize_text(original_name).casefold()
+        if original_name
+        else None
+    )
 
     for alias in aliases:
+
         if not isinstance(alias, str):
             continue
 
-        alias = alias.strip()
+        alias = _normalize_text(alias)
+
+        if not alias:
+            continue
+
         normalized = alias.casefold()
 
-        if alias and normalized not in seen:
-            cleaned.append(alias)
-            seen.add(normalized)
+        if normalized == original_normalized:
+            continue
 
-    return cleaned[:20]
+        if normalized in seen:
+            continue
+
+        seen.add(normalized)
+        cleaned.append(alias)
+
+        if len(cleaned) >= max_aliases:
+            break
+
+    return cleaned
+
+
+# =========================================================
+# HEADING ALIAS GENERATION
+# =========================================================
+
+def _generate_heading_batch(heading_names):
+
+    prompt = f"""
+Anda adalah ahli pengolahan bahasa untuk sistem
+chatbot layanan keimigrasian.
+
+Buat alias atau variasi penyebutan untuk setiap heading
+berikut dalam bahasa:
+
+{", ".join(ALIAS_LANGUAGES)}
+
+Ketentuan:
+1. Maksimal 20 alias untuk setiap heading.
+2. Alias harus memiliki makna yang sama.
+3. Gunakan variasi istilah, sinonim, dan terjemahan.
+4. Jangan membuat informasi baru.
+5. Jangan mengulang nama heading asli.
+6. Hindari alias yang terlalu umum atau tidak relevan.
+7. Hasil harus berupa JSON valid.
+8. Gunakan nama heading asli sebagai key.
+9. Value setiap key harus berupa array string.
+
+Data heading:
+
+{json.dumps(heading_names, ensure_ascii=False)}
+
+Format:
+
+{{
+    "Nama Heading": [
+        "alias 1",
+        "alias 2"
+    ]
+}}
+"""
+
+    return _generate_content_with_failover(prompt)
+
+
+def generate_heading_aliases_batch(heading_names):
+    """
+    Menghasilkan alias untuk beberapa heading.
+
+    Output:
+        {
+            "Nama Heading": ["alias 1", "alias 2"]
+        }
+    """
+
+    results = {}
+
+    heading_names = list(dict.fromkeys(
+        _normalize_text(name)
+        for name in heading_names
+        if _normalize_text(name)
+    ))
+
+    for start in range(
+        0,
+        len(heading_names),
+        BATCH_SIZE,
+    ):
+
+        batch = heading_names[
+            start:start + BATCH_SIZE
+        ]
+
+        print(
+            f"[ALIAS] Heading batch "
+            f"{start // BATCH_SIZE + 1}"
+        )
+
+        response = _generate_heading_batch(batch)
+
+        if not isinstance(response, dict):
+            continue
+
+        for heading in batch:
+
+            aliases = response.get(heading)
+
+            if aliases is None:
+                continue
+
+            results[heading] = _clean_alias_list(
+                aliases,
+                original_name=heading,
+            )
+
+    return results
+
+
+# =========================================================
+# SUBHEADING ALIAS GENERATION
+# =========================================================
+
+def _generate_subheading_batch(subheadings):
+
+    prompt_data = [
+        {
+            "heading_id": item["heading_id"],
+            "heading": item["heading"],
+            "subheading_id": item["subheading_id"],
+            "subheading": item["subheading"],
+        }
+        for item in subheadings
+    ]
+
+    prompt = f"""
+Anda adalah ahli pengolahan bahasa untuk chatbot
+layanan keimigrasian.
+
+Buat alias untuk setiap subheading berdasarkan konteks
+heading induknya.
+
+Bahasa alias:
+
+{", ".join(ALIAS_LANGUAGES)}
+
+Ketentuan:
+1. Buat 5 sampai 15 alias jika memungkinkan.
+2. Maksimal 20 alias untuk setiap subheading.
+3. Alias harus sesuai dengan konteks heading.
+4. Gunakan sinonim, variasi pertanyaan, dan terjemahan.
+5. Jangan mengubah makna subheading.
+6. Jangan mengulang nama subheading asli.
+7. Jangan membuat informasi baru.
+8. Hasil harus berupa JSON valid.
+9. Gunakan heading_id::subheading_id sebagai key.
+
+Data:
+
+{json.dumps(prompt_data, ensure_ascii=False)}
+
+Format:
+
+{{
+    "heading_id::subheading_id": [
+        "alias 1",
+        "alias 2"
+    ]
+}}
+"""
+
+    return _generate_content_with_failover(prompt)
+
+
+def generate_subheading_aliases_batch(subheadings):
+    """
+    Menghasilkan alias untuk beberapa subheading.
+
+    Output:
+        {
+            "heading_id::subheading_id": [
+                "alias 1",
+                "alias 2"
+            ]
+        }
+    """
+
+    results = {}
+
+    valid_items = [
+        item
+        for item in subheadings
+        if isinstance(item, dict)
+        and all(
+            item.get(field)
+            for field in (
+                "heading_id",
+                "heading",
+                "subheading_id",
+                "subheading",
+            )
+        )
+    ]
+
+    for start in range(
+        0,
+        len(valid_items),
+        BATCH_SIZE,
+    ):
+
+        batch = valid_items[
+            start:start + BATCH_SIZE
+        ]
+
+        print(
+            f"[ALIAS] Subheading batch "
+            f"{start // BATCH_SIZE + 1}"
+        )
+
+        response = _generate_subheading_batch(batch)
+
+        if not isinstance(response, dict):
+            continue
+
+        for item in batch:
+
+            key = (
+                f"{item['heading_id']}::"
+                f"{item['subheading_id']}"
+            )
+
+            aliases = response.get(key)
+
+            if aliases is None:
+                continue
+
+            results[key] = _clean_alias_list(
+                aliases,
+                original_name=item["subheading"],
+            )
+
+    return results

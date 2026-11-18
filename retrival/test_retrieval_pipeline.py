@@ -1,12 +1,12 @@
 import sys
 
-from database.chroma_db import chunk_collection, entity_collection
+from database.chroma_db import chunk_collection, heading_collection
 from retrival.retrieval_pipeline import RetrievalPipeline
-from retrival.semantic_search import SEMANTIC_MIN_SCORES, semantic_search
+from retrival.semantic_search import semantic_search
 from userquery.query_embedding import create_query_embedding
 from userquery.query_normalizer import normalize_query
 
-DEFAULT_QUESTION = "How long is a visa on arrival valid for?"
+DEFAULT_QUESTION = "Berapa Tarif Perpanjangan Visa on Arrival"
 
 
 def print_separator(title):
@@ -20,69 +20,50 @@ def _clip(text, limit):
     return text if len(text) <= limit else text[:limit] + "..."
 
 
-def print_candidates(title, candidates, show_support=False):
-    print_separator(title)
+def _fmt(value):
+    return f"{value:.6f}" if isinstance(value, (int, float)) else str(value)
 
+
+def print_candidates(title, candidates):
+    print_separator(title)
     if not candidates:
         print("Tidak ada kandidat.")
         return
 
     for index, item in enumerate(candidates, start=1):
-        line = f"{index}. type={item.get('type')} | score={item.get('score', 0.0):.6f}"
-        if show_support and item.get("alias_support"):
-            line += (
-                f" | alias_support={item['alias_support']:.3f}"
-                f" ({item.get('alias_hit_count', 0)} alias)"
-            )
-        print(line)
-        print(f"   entity={_clip(item.get('entity'), 60)}")
-        print(f"   subtopic={_clip(item.get('subtopic'), 70)}")
+        print(f"{index}. type={item.get('type')} | score={_fmt(item.get('score'))}")
+        print(f"   heading={_clip(item.get('heading'), 60)}")
+        print(f"   subheading={_clip(item.get('subheading'), 70)}")
+        if item.get("type") == "alias":
+            print(f"   alias={_clip(item.get('alias'), 70)} "
+                  f"| scope={item.get('alias_scope')}")
         if item.get("type") == "chunk":
-            print(
-                f"   chunk_id={item.get('content_chunk_id')} "
-                f"| page={item.get('page_start')}-{item.get('page_end')}"
-            )
+            print(f"   chunk_id={item.get('content_chunk_id')} "
+                  f"| page={item.get('page_start')}-{item.get('page_end')}")
             print(f"   content={_clip(item.get('content'), 150)}")
 
 
 def print_score_tuning(question):
-    """Skor mentah TANPA filter minimum, untuk menyetel SEMANTIC_MIN_SCORES.
 
-    Jalankan dengan query valid dan query di luar domain, lalu atur minimum di
-    antara skor teratas keduanya.
-    """
-    print_separator("SCORE TUNING (tanpa filter, hanya untuk menyetel minimum)")
+    print_separator("SCORE TUNING (skor mentah per kanal, tanpa ambang)")
     embedding = create_query_embedding(normalize_query(question))
     if embedding is None:
         print("Embedding gagal.")
         return
 
     searches = (
-        ("entity", entity_collection, {"type": "entity"}),
-        ("alias", entity_collection, {"type": "alias"}),
-        ("subtopic", entity_collection, {"type": "subtopic"}),
+        ("heading", heading_collection, {"type": "heading"}),
+        ("alias", heading_collection, {"type": "alias"}),
+        ("subheading", heading_collection, {"type": "subheading"}),
         ("chunk", chunk_collection, None),
     )
     for name, collection, where in searches:
-        raw = semantic_search(
-            query_embedding=embedding,
-            collection=collection,
-            where=where,
-            top_k=3,
-            result_type=name,
-            min_score=0.0,
-        )
+        raw = semantic_search(embedding, collection, where=where, top_k=3,
+                              result_type=name, min_score=0.0)
         distances = (raw.get("distances") or [[]])[0]
         scores = [1.0 - float(d) for d in distances if d is not None]
         top = f"{scores[0]:.4f}" if scores else "-"
-        minimum = SEMANTIC_MIN_SCORES.get(name)
-        verdict = ""
-        if scores and minimum is not None:
-            verdict = "lolos" if scores[0] >= minimum else "TERFILTER"
-        print(
-            f"{name:<9} skor teratas={top} | minimum={minimum} | {verdict} "
-            f"| top3={[round(v, 4) for v in scores]}"
-        )
+        print(f"{name:<11} skor teratas={top} | top3={[round(v, 4) for v in scores]}")
 
 
 def main():
@@ -97,118 +78,110 @@ def main():
     context = result.get("context") or {}
 
     print_separator("CONTEXT RESULT")
-    detected_score = context.get("detected_score")
-    subtopic_score = context.get("subtopic_score")
-    print("Entity          :", context.get("entity"))
-    print("Entity ID       :", context.get("entity_id"))
-    print("Detected Entity :", context.get("detected_entity"))
-    print("Detected Score  :", f"{detected_score:.6f}" if detected_score is not None else None)
-    print("Explicit Entity :", context.get("explicit_entity"))
-    print("Resolution      :", context.get("resolution_reason"))
-    margin = context.get("entity_score_margin")
-    print("Score margin    :", f"{margin:.6f}" if margin is not None else None)
-    print("Subtopic        :", context.get("subtopic"))
-    print("Subtopic ID     :", context.get("subtopic_id"))
-    print("Subtopic Score  :", f"{subtopic_score:.6f}" if subtopic_score is not None else None)
-    print("Follow-up       :", context.get("is_followup"))
+    print("Heading            :", context.get("heading"))
+    print("Heading ID         :", context.get("heading_id"))
+    print("Detected Heading   :", context.get("detected_heading"))
+    print("Detected Score     :", _fmt(context.get("detected_score")))
+    print("Explicit Heading   :", context.get("explicit_heading"))
+    print("Ambiguous          :", context.get("ambiguous_candidates"))
+    print("Resolution         :", context.get("resolution_reason"))
+    print("Domain relevant    :", context.get("domain_relevant"),
+          f"(kanal setuju: {context.get('agreeing_channels')})")
+    print("Subheading         :", context.get("subheading"))
+    print("Subheading ID      :", context.get("subheading_id"))
+    print("Subheading Match   :", context.get("subheading_match_type"))
+    print("Subheading Score   :", _fmt(context.get("subheading_score")))
+    print("Follow-up          :", context.get("is_followup"))
 
     # Retrieved contexts untuk dataset RAGAS
     print_separator("RETRIEVED CONTEXTS (DATASET RAGAS)")
-
     relevant = result.get("relevant_chunks", [])
-
-    if not relevant:
+    retrieved_contexts = []
+    for item in relevant:
+        content = (item.get("content") or "").strip()
+        if not content:
+            continue
+        retrieved_contexts.append(content)
+        print(f"\n--- Context {len(retrieved_contexts)} ---")
+        print(f"Chunk ID   : {item.get('content_chunk_id')}")
+        print(f"Heading    : {item.get('heading')}")
+        print(f"Subheading : {item.get('subheading')}")
+        print(f"Score      : {_fmt(item.get('score'))}")
+        print(f"Content    :\n{content}")
+    if not retrieved_contexts:
         print("Retrieved contexts kosong.")
     else:
-        retrieved_contexts = []
-
-        for index, item in enumerate(relevant, start=1):
-            content = (item.get("content") or "").strip()
-
-            if not content:
-                continue
-
-            retrieved_contexts.append(content)
-
-            print(f"\n--- Context {len(retrieved_contexts)} ---")
-            print(f"Chunk ID  : {item.get('content_chunk_id')}")
-            print(f"Entity    : {item.get('entity')}")
-            print(f"Subtopic  : {item.get('subtopic')}")
-            print(f"Score     : {item.get('score', 0.0):.6f}")
-            print(f"Content   :\n{content}")
-
         print("\n" + "=" * 70)
         print(f"Total retrieved contexts: {len(retrieved_contexts)}")
 
-    print_separator("ENTITY RANKING (keputusan ContextUnderstanding)")
-    ranking = (context.get("entity_result") or {}).get("results", [])
+    print_separator("HEADING RANKING (RRF di ContextUnderstanding)")
+    ranking = (context.get("heading_result") or {}).get("results", [])
     if not ranking:
         print("Tidak ada kandidat.")
-    for index, item in enumerate(ranking, start=1):
-        print(
-            f"{index}. score={item.get('score', 0.0):.6f} "
-            f"| sumber={','.join(item.get('sources') or [])} "
-            f"| {_clip(item.get('entity'), 60)}"
-        )
+    for index, item in enumerate(ranking[:10], start=1):
+        ranks = ", ".join(f"{c}#{r}" for c, r in
+                          (item.get("channel_ranks") or {}).items())
+        print(f"{index}. rrf={item.get('rrf_score', 0.0):.6f} "
+              f"| cosine={_fmt(item.get('best_cosine'))} "
+              f"| {ranks} | {_clip(item.get('heading'), 60)}")
 
-    print_candidates("ENTITY CANDIDATES", result.get("entity_results", []), show_support=True)
-    print_candidates("SUBTOPIC CANDIDATES", result.get("subtopic_results", []), show_support=True)
+    print_separator("SUBHEADING RANKING (di dalam heading terpilih)")
+    subs = context.get("subheading_candidates") or []
+    if not subs:
+        print("Tidak ada kandidat.")
+    for index, item in enumerate(subs, start=1):
+        ranks = ", ".join(f"{c}#{r}" for c, r in
+                          (item.get("channel_ranks") or {}).items())
+        print(f"{index}. rrf={item.get('rrf_score', 0.0):.6f} | {ranks} "
+              f"| {_clip(item.get('subheading'), 60)}")
+
+    print_candidates("HEADING CANDIDATES", result.get("heading_results", []))
+    print_candidates("ALIAS CANDIDATES", result.get("alias_results", []))
+    print_candidates("SUBHEADING CANDIDATES", result.get("subheading_results", []))
     print_candidates("CHUNK CANDIDATES (bukti retrieval)", result.get("chunk_results", []))
 
-    # Alias yang paling cocok dengan pertanyaan (multi-vektor).
     print_separator("ALIAS HITS (urut skor)")
     hits = result.get("alias_hits", [])
     if not hits:
         print("Tidak ada alias yang cocok.")
     for index, hit in enumerate(hits[:10], start=1):
-        print(f"{index}. {hit['score']:.4f} | {hit['alias']!r}")
-        print(f"   -> {_clip(hit.get('entity'), 50)} | {_clip(hit.get('subtopic'), 50)}")
+        print(f"{index}. {_fmt(hit.get('score'))} | {hit.get('alias')!r}")
+        print(f"   -> {_clip(hit.get('heading'), 50)} | {_clip(hit.get('subheading'), 50)}")
 
-    # Persis apa yang dikirim ke LLM.
     print_separator("RELEVANT CHUNKS (konteks yang dikirim ke LLM, urutan baca)")
-    relevant = result.get("relevant_chunks", [])
     if not relevant:
         print("Tidak ada.")
     total_chars = 0
     for index, item in enumerate(relevant, start=1):
         content = item.get("content") or ""
         total_chars += len(content)
-        print(
-            f"{index}. {_clip(item.get('entity'), 40)} | {_clip(item.get('subtopic'), 40)} "
-            f"| chunk_index={item.get('chunk_index')} | skor={item.get('score', 0.0):.4f} "
-            f"| {len(content)} karakter"
-        )
+        print(f"{index}. {_clip(item.get('heading'), 40)} | {_clip(item.get('subheading'), 40)} "
+              f"| chunk_index={item.get('chunk_index')} | skor={_fmt(item.get('score'))} "
+              f"| {len(content)} karakter")
     print(f"\nTotal chunk: {len(relevant)} | total karakter konteks: {total_chars}")
 
-    print_separator("ALL CANDIDATES - RANKING (di dalam entity terpilih)")
-    ranked = result.get("results", [])
-    if not ranked:
-        print("Tidak ada kandidat.")
-    for index, item in enumerate(ranked[:10], start=1):
-        print(
-            f"{index}. type={item.get('type')} | score={item.get('score', 0.0):.6f} "
-            f"| {_clip(item.get('subtopic'), 60)}"
-        )
+    print_separator("TOP 3 CHUNK (skor tertinggi)")
+    for index, item in enumerate(result.get("top3", []), start=1):
+        print(f"{index}. score={_fmt(item.get('score'))} "
+              f"| {_clip(item.get('subheading'), 60)} | chunk_index={item.get('chunk_index')}")
 
     best = result.get("best_candidate")
     print_separator("BEST CANDIDATE")
     if best:
-        print("Type        :", best.get("type"))
-        print("ID          :", best.get("id"))
-        print("Score       :", f"{best.get('score', 0.0):.6f}")
-        print("Entity      :", best.get("entity"))
-        print("Subtopic    :", best.get("subtopic"))
+        print("Type       :", best.get("type"))
+        print("ID         :", best.get("id"))
+        print("Score      :", _fmt(best.get("score")))
+        print("Heading    :", best.get("heading"))
+        print("Subheading :", best.get("subheading"))
     else:
         print("Tidak ada best candidate.")
 
     print_separator("FINAL STATUS")
     print("Found  :", result.get("found"))
     print("Status :", result.get("status"))
-    errors = result.get("search_errors") or []
-    if errors:
-        print("Search errors:")
-        for error in errors:
-            print("  -", error)
+    for error in result.get("search_errors") or []:
+        print("  - search error:", error)
+    print("Timings:", {k: round(v, 3) for k, v in (result.get("timings") or {}).items()})
 
     if tune or not result.get("found"):
         print_score_tuning(question)

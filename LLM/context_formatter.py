@@ -44,18 +44,18 @@ def format_context(retrieval_result):
             )
 
         context_meta = retrieval_result.get("context") or {}
-        resolved_entity_id = context_meta.get("entity_id")
+        resolved_heading_id = context_meta.get("heading_id")
         chunks = retrieval_result.get("relevant_chunks")
         keep_reading_order = chunks is not None
         if chunks is None:
             chunks = retrieval_result.get("chunk_results") or []
 
-        # Only include chunks belonging to the resolved entity. Never fall
+        # Only include chunks belonging to the resolved heading. Never fall
         # back to raw semantic candidates when relevance validation failed.
-        if resolved_entity_id:
+        if resolved_heading_id:
             chunks = [
                 item for item in chunks
-                if item.get("entity_id") == resolved_entity_id
+                if str(item.get("heading_id")) == str(resolved_heading_id)
             ]
 
         normalized = []
@@ -72,24 +72,27 @@ def format_context(retrieval_result):
             # Hanya field yang berguna bagi LLM. id, skor, dan chunk_index
             # tidak membantu menjawab dan hanya memperbesar prompt.
             entry = {
-                "subtopic": item.get("subtopic"),
+                "subheading": item.get("subheading"),
                 "source": item.get("document") or item.get("source"),
                 "page": _page_value(item),
                 "content": content,
             }
-            normalized.append({k: v for k, v in entry.items() if v not in (None, "")})
+            row = {k: v for k, v in entry.items() if v not in (None, "")}
+            row["_score"] = score
+            normalized.append(row)
 
-        # relevant_chunks is already in reading order (subtopic chunks by
+        # relevant_chunks is already in reading order (subheading chunks by
         # chunk_index); re-sorting by score would scramble multi-part content.
         if not keep_reading_order:
             normalized.sort(
-                key=lambda item: item["similarity_score"]
-                if item["similarity_score"] is not None else -1,
+                key=lambda item: item["_score"] if item["_score"] is not None else -1,
                 reverse=True,
             )
+        for item in normalized:
+            item.pop("_score", None)
         payload = {
             "found": bool(normalized),
-            "resolved_entity": context_meta.get("entity"),
+            "resolved_heading": context_meta.get("heading"),
             "contexts": normalized,
         }
         if not normalized:
@@ -113,10 +116,10 @@ def format_context(retrieval_result):
             except (TypeError, ValueError):
                 pass
         contexts.append({
-            "entity": meta.get("entity"),
-            "entity_id": meta.get("entity_id"),
-            "subtopic": meta.get("subtopic"),
-            "subtopic_id": meta.get("subtopic_id"),
+            "heading": meta.get("heading"),
+            "heading_id": meta.get("heading_id"),
+            "subheading": meta.get("subheading"),
+            "subheading_id": meta.get("subheading_id"),
             "category": meta.get("category"),
             "source": meta.get("document") or meta.get("source"),
             "page": _page_value(meta),
@@ -124,8 +127,8 @@ def format_context(retrieval_result):
             "content": doc,
         })
     return json.dumps(
-        {"found": bool(contexts), "resolved_entity": None,
-         "resolved_entity_id": None, "contexts": contexts},
+        {"found": bool(contexts), "resolved_heading": None,
+         "resolved_heading_id": None, "contexts": contexts},
         ensure_ascii=False,
         indent=2,
     )

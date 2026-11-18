@@ -42,18 +42,19 @@ SHOW_SEMANTIC_SCORE_IN_ANSWER = False
 
 
 def _semantic_scores(analysis):
-    entity_id = analysis.get("entity_id")
-    entity_score = next(
+    """Skor cosine terbaik heading terpilih dan skor cosine subheading."""
+    heading_id = analysis.get("heading_id")
+    heading_score = next(
         (
-            item.get("score")
-            for item in (analysis.get("entity_result") or {}).get("results", [])
-            if entity_id and item.get("entity_id") == entity_id
+            item.get("best_cosine")
+            for item in (analysis.get("heading_result") or {}).get("results", [])
+            if heading_id and item.get("heading_id") == heading_id
         ),
         None,
     )
     return {
-        "entity": entity_score,
-        "subtopic": analysis.get("subtopic_score"),
+        "heading": heading_score,
+        "subheading": analysis.get("subheading_score"),
     }
 
 
@@ -78,11 +79,14 @@ class ImmigrationChatbot:
     def ask(
         self,
         question,
-        previous_entity=None,
+        previous_heading=None,
         previous_question=None,
         previous_answer=None,
         evaluation=False,
+        previous_heading_id=None,
+        previous_entity=None,  # nama lama, dipertahankan agar pemanggil lama tidak error
     ):
+        previous_heading = previous_heading or previous_entity
         if not isinstance(question, str) or not question.strip():
             return {
                 "question": question,
@@ -97,7 +101,8 @@ class ImmigrationChatbot:
         t_start = time.perf_counter()
         retrieval_result = self.retrieval_pipeline.retrieve(
             effective_question,
-            previous_entity=previous_entity,
+            previous_heading=previous_heading,
+            previous_heading_id=previous_heading_id,
         )
         analysis = retrieval_result.get("context") or {}
 
@@ -108,11 +113,11 @@ class ImmigrationChatbot:
         print("Effective query  :", effective_question)
         print("Retrieval status :", retrieval_result.get("status"))
         print("Found            :", retrieval_result.get("found"))
-        print("Entity           :", analysis.get("entity") or "-")
-        print("Subtopic         :", analysis.get("subtopic") or "-")
+        print("Heading          :", analysis.get("heading") or "-")
+        print("Subheading       :", analysis.get("subheading") or "-")
         semantic_score = _semantic_scores(analysis)
-        print("Score semantic   : entity =", _fmt_score(semantic_score["entity"]),
-              "| subtopic =", _fmt_score(semantic_score["subtopic"]))
+        print("Score semantic   : heading =", _fmt_score(semantic_score["heading"]),
+              "| subheading =", _fmt_score(semantic_score["subheading"]))
         print("Raw retrieval    :", retrieval_result.get("retrieval_found", False))
         for error in retrieval_result.get("search_errors") or []:
             print("Search error     :", error)
@@ -164,9 +169,11 @@ class ImmigrationChatbot:
 
         if found and SHOW_SEMANTIC_SCORE_IN_ANSWER:
             answer = (
-                f"{answer}\n\nScore semantic: entity {_fmt_score(semantic_score['entity'])}"
-                f" | subtopic {_fmt_score(semantic_score['subtopic'])}"
+                f"{answer}\n\nScore semantic: heading {_fmt_score(semantic_score['heading'])}"
+                f" | subheading {_fmt_score(semantic_score['subheading'])}"
             )
+
+        best = retrieval_result.get("best_candidate") or {}
 
         response = {
             "semantic_score": semantic_score,
@@ -178,20 +185,28 @@ class ImmigrationChatbot:
             "context": context,
             "prompt": prompt,
             "answer": answer,
-            "entity": analysis.get("entity"),
-            "retrieved_entity": (retrieval_result.get("best_candidate") or {}).get("entity"),
-            "retrieved_entity_id": (retrieval_result.get("best_candidate") or {}).get("entity_id"),
-            "retrieved_subtopic": (retrieval_result.get("best_candidate") or {}).get("subtopic"),
-            "retrieved_subtopic_id": (retrieval_result.get("best_candidate") or {}).get("subtopic_id"),
+            "heading": analysis.get("heading"),
+            "heading_id": analysis.get("heading_id"),
+            "entity": analysis.get("heading"),  # alias nama lama
+            "retrieved_heading": best.get("heading"),
+            "retrieved_heading_id": best.get("heading_id"),
+            "retrieved_subheading": best.get("subheading"),
+            "retrieved_subheading_id": best.get("subheading_id"),
             "found": found,
             "status": retrieval_result.get("status"),
         }
 
         if evaluation:
-            # Persis chunk yang dikirim ke LLM (bukan top-K pencarian mentah).
+            # Chunk yang dikirim ke LLM, diurutkan dari skor tertinggi. LLM
+            # menerima urutan baca dokumen, tetapi metrik precision menilai
+            # peringkat retriever, jadi daftar evaluasi harus berurutan skor.
+            ranked = sorted(
+                retrieval_result.get("relevant_chunks", []),
+                key=lambda item: (item.get("score") is None,
+                                  -(item.get("score") or 0.0)),
+            )
             response["evaluation_contexts"] = [
-                item.get("content", "")
-                for item in retrieval_result.get("relevant_chunks", [])
+                item.get("content", "") for item in ranked
             ]
             response["retrieved_score"] = (
                 retrieval_result.get("best_candidate") or {}
