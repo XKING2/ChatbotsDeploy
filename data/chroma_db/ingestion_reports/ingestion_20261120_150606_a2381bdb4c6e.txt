@@ -1,0 +1,404 @@
+=================================================================
+KNOWLEDGE BASE INGESTION
+=================================================================
+PDF          : C:\Users\IT\Documents\Chatbot\data\pdf\Dataset_SOP_Kanim.pdf
+Source ID    : src_e00dcba580b6ac94
+Source file  : dataset_sop_kanim.pdf
+Force        : False
+Generation   : legacy
+Database     : {'generation': 'legacy', 'chunk_collection': 'knowledge_chunks', 'heading_collection': 'knowledge_headings', 'chunk_count': 0, 'heading_count': 0}
+
+=================================================================
+[1/8] Parsing dan preprocessing PDF
+=================================================================
+Blok hasil parsing: 3146
+Blok setelah preprocessing: 3146
+
+=================================================================
+[2/8] Membentuk section, chunk, heading, dan subheading
+=================================================================
+Section   : 285
+Chunk     : 335
+Heading   : 17
+  PERPANJANGAN VISA ON ARRIVAL (VOA) > Pengertian Visa on Arrival (VoA)
+  PERPANJANGAN VISA ON ARRIVAL (VOA) > Pengertian Elektronik Visa on Arrival (e-VoA)
+  PERPANJANGAN VISA ON ARRIVAL (VOA) > Persyaratan
+  PERPANJANGAN VISA ON ARRIVAL (VOA) > Negara Penerima VOA
+  PERPANJANGAN VISA ON ARRIVAL (VOA) > Sistem Mekanisme dan Prosedur
+  PERPANJANGAN VISA ON ARRIVAL (VOA) > Jangka Waktu Pelayanan
+  PERPANJANGAN VISA ON ARRIVAL (VOA) > Biaya/Tarif
+  PERPANJANGAN VISA ON ARRIVAL (VOA) > Produk Pelayanan
+  PERPANJANGAN VISA ON ARRIVAL (VOA) > Penanganan Pengaduan, Saran dan Masukan
+  PERPANJANGAN VISA ON ARRIVAL (VOA) > Dasar Hukum
+  PERPANJANGAN VISA ON ARRIVAL (VOA) > Sarana dan Prasarana dan/ atau Fasilitas
+  PERPANJANGAN VISA ON ARRIVAL (VOA) > Kompetensi Pelaksana
+  PERPANJANGAN VISA ON ARRIVAL (VOA) > Pengawasan Internal
+  PERPANJANGAN VISA ON ARRIVAL (VOA) > Jumlah Pelaksana
+  PERPANJANGAN VISA ON ARRIVAL (VOA) > Jaminan Pelayanan
+  PERPANJANGAN VISA ON ARRIVAL (VOA) > Jaminan Keamanan dan Keselamatan Pelayanan
+  PERPANJANGAN IZIN TINGGAL KUNJUNGAN > Pengertian
+  PERPANJANGAN IZIN TINGGAL KUNJUNGAN > Persyaratan
+  PERPANJANGAN IZIN TINGGAL KUNJUNGAN > Negara Penerima ITK
+  PERPANJANGAN IZIN TINGGAL KUNJUNGAN > Sistem Mekanisme dan Prosedur
+  PERPANJANGAN IZIN TINGGAL KUNJUNGAN > Jangka Waktu Pelayanan
+  PERPANJANGAN IZIN TINGGAL KUNJUNGAN > Biaya/Tarif
+  PERPANJANGAN IZIN TINGGAL KUNJUNGAN > Produk Pelayanan
+  PERPANJANGAN IZIN TINGGAL KUNJUNGAN > Penanganan Pengaduan, Saran dan Masukan
+  PERPANJANGAN IZIN TINGGAL KUNJUNGAN > Dasar Hukum
+  PERPANJANGAN IZIN TINGGAL KUNJUNGAN > Sarana dan Prasarana dan/ atau Fasilitas
+  PERPANJANGAN IZIN TINGGAL KUNJUNGAN > Kompetensi Pelaksana
+  PERPANJANGAN IZIN TINGGAL KUNJUNGAN > Pengawasan Internal
+  PERPANJANGAN IZIN TINGGAL KUNJUNGAN > Jumlah Pelaksana
+  PERPANJANGAN IZIN TINGGAL KUNJUNGAN > Jaminan Pelayanan
+  PERPANJANGAN IZIN TINGGAL KUNJUNGAN > Jaminan Keamanan dan Keselamatan Pelayanan
+  PEMBUATAN IZIN TINGGAL TERBATAS (KITAS) > Pengertian
+  PEMBUATAN IZIN TINGGAL TERBATAS (KITAS) > Persyaratan Umum
+  PEMBUATAN IZIN TINGGAL TERBATAS (KITAS) > Persyaratan Khusus
+  PEMBUATAN IZIN TINGGAL TERBATAS (KITAS) > Negara Penerima Kebijakan
+  PEMBUATAN IZIN TINGGAL TERBATAS (KITAS) > Sistem Mekanisme dan Prosedur
+  PEMBUATAN IZIN TINGGAL TERBATAS (KITAS) > Jangka Waktu Pelayanan
+  PEMBUATAN IZIN TINGGAL TERBATAS (KITAS) > Biaya/Tarif
+  PEMBUATAN IZIN TINGGAL TERBATAS (KITAS) > Produk Pelayanan
+  PEMBUATAN IZIN TINGGAL TERBATAS (KITAS) > Penanganan Pengaduan, Saran dan Masukan
+  PEMBUATAN IZIN TINGGAL TERBATAS (KITAS) > Dasar Hukum
+  PEMBUATAN IZIN TINGGAL TERBATAS (KITAS) > Sarana dan Prasarana dan/ atau Fasilitas
+  PEMBUATAN IZIN TINGGAL TERBATAS (KITAS) > Kompetensi Pelaksana
+  PEMBUATAN IZIN TINGGAL TERBATAS (KITAS) > Pengawasan Internal
+  PEMBUATAN IZIN TINGGAL TERBATAS (KITAS) > Jumlah Pelaksana
+  PEMBUATAN IZIN TINGGAL TERBATAS (KITAS) > Jaminan Pelayanan
+  PEMBUATAN IZIN TINGGAL TERBATAS (KITAS) > Jaminan Keamanan dan Keselamatan Pelayanan
+  PERPANJANGAN IZIN TINGGAL TERBATAS > Pengertian
+  PERPANJANGAN IZIN TINGGAL TERBATAS > Persyaratan
+  PERPANJANGAN IZIN TINGGAL TERBATAS > Negara Penerima Kebijakan
+  PERPANJANGAN IZIN TINGGAL TERBATAS > Sistem Mekanisme dan Prosedur
+  PERPANJANGAN IZIN TINGGAL TERBATAS > Jangka Waktu Pelayanan
+  PERPANJANGAN IZIN TINGGAL TERBATAS > Biaya/Tarif
+  PERPANJANGAN IZIN TINGGAL TERBATAS > Produk Pelayanan
+  PERPANJANGAN IZIN TINGGAL TERBATAS > Penanganan Pengaduan, Saran dan Masukan
+  PERPANJANGAN IZIN TINGGAL TERBATAS > Dasar Hukum
+  PERPANJANGAN IZIN TINGGAL TERBATAS > Sarana dan Prasarana dan/ atau Fasilitas
+  PERPANJANGAN IZIN TINGGAL TERBATAS > Kompetensi Pelaksana
+  PERPANJANGAN IZIN TINGGAL TERBATAS > Pengawasan Internal
+  PERPANJANGAN IZIN TINGGAL TERBATAS > Jumlah Pelaksana
+  PERPANJANGAN IZIN TINGGAL TERBATAS > Jaminan Pelayanan
+  PERPANJANGAN IZIN TINGGAL TERBATAS > Jaminan Keamanan dan Keselamatan Pelayanan
+  PEMBUATAN IZIN TINGGAL TETAP (KITAP) > Pengertian
+  PEMBUATAN IZIN TINGGAL TETAP (KITAP) > Persyaratan
+  PEMBUATAN IZIN TINGGAL TETAP (KITAP) > Persyaratan Khusus
+  PEMBUATAN IZIN TINGGAL TETAP (KITAP) > Negara Penerima KITAP
+  PEMBUATAN IZIN TINGGAL TETAP (KITAP) > Sistem Mekanisme dan Prosedur
+  PEMBUATAN IZIN TINGGAL TETAP (KITAP) > Jangka Waktu Pelayanan
+  PEMBUATAN IZIN TINGGAL TETAP (KITAP) > Biaya/Tarif
+  PEMBUATAN IZIN TINGGAL TETAP (KITAP) > Produk Pelayanan
+  PEMBUATAN IZIN TINGGAL TETAP (KITAP) > Penanganan Pengaduan, Saran dan Masukan
+  PEMBUATAN IZIN TINGGAL TETAP (KITAP) > Dasar Hukum
+  PEMBUATAN IZIN TINGGAL TETAP (KITAP) > Sarana dan Prasarana dan/ atau Fasilitas
+  PEMBUATAN IZIN TINGGAL TETAP (KITAP) > Kompetensi Pelaksana
+  PEMBUATAN IZIN TINGGAL TETAP (KITAP) > Pengawasan Internal
+  PEMBUATAN IZIN TINGGAL TETAP (KITAP) > Jumlah Pelaksana
+  PEMBUATAN IZIN TINGGAL TETAP (KITAP) > Jaminan Pelayanan
+  PEMBUATAN IZIN TINGGAL TETAP (KITAP) > Jaminan Keamanan dan Keselamatan Pelayanan
+  PERPANJANGAN IZIN TINGGAL TETAP (KITAP) > Pengertian
+  PERPANJANGAN IZIN TINGGAL TETAP (KITAP) > Persyaratan
+  PERPANJANGAN IZIN TINGGAL TETAP (KITAP) > Persyaratan Khusus
+  PERPANJANGAN IZIN TINGGAL TETAP (KITAP) > Negara Penerima ITK
+  PERPANJANGAN IZIN TINGGAL TETAP (KITAP) > Sistem Mekanisme dan Prosedur
+  PERPANJANGAN IZIN TINGGAL TETAP (KITAP) > Jangka Waktu Pelayanan
+  PERPANJANGAN IZIN TINGGAL TETAP (KITAP) > Biaya/Tarif
+  PERPANJANGAN IZIN TINGGAL TETAP (KITAP) > Produk Pelayanan
+  PERPANJANGAN IZIN TINGGAL TETAP (KITAP) > Penanganan Pengaduan, Saran dan Masukan
+  PERPANJANGAN IZIN TINGGAL TETAP (KITAP) > Dasar Hukum
+  PERPANJANGAN IZIN TINGGAL TETAP (KITAP) > Sarana dan Prasarana dan/ atau Fasilitas
+  PERPANJANGAN IZIN TINGGAL TETAP (KITAP) > Kompetensi Pelaksana
+  PERPANJANGAN IZIN TINGGAL TETAP (KITAP) > Pengawasan Internal
+  PERPANJANGAN IZIN TINGGAL TETAP (KITAP) > Jumlah Pelaksana
+  PERPANJANGAN IZIN TINGGAL TETAP (KITAP) > Jaminan Pelayanan
+  PERPANJANGAN IZIN TINGGAL TETAP (KITAP) > Jaminan Keamanan dan Keselamatan Pelayanan
+  FASILITAS KEIMIGRASIAN BAGI ANAK > Pengertian
+  FASILITAS KEIMIGRASIAN BAGI ANAK > Persyaratan
+  FASILITAS KEIMIGRASIAN BAGI ANAK > Negara Penerima ITK
+  FASILITAS KEIMIGRASIAN BAGI ANAK > Sistem Mekanisme dan Prosedur
+  FASILITAS KEIMIGRASIAN BAGI ANAK > Jangka Waktu Pelayanan
+  FASILITAS KEIMIGRASIAN BAGI ANAK > Biaya/Tarif
+  FASILITAS KEIMIGRASIAN BAGI ANAK > Produk Pelayanan
+  FASILITAS KEIMIGRASIAN BAGI ANAK > Penanganan Pengaduan, Saran dan Masukan
+  FASILITAS KEIMIGRASIAN BAGI ANAK > Dasar Hukum
+  FASILITAS KEIMIGRASIAN BAGI ANAK > Sarana dan Prasarana dan/ atau Fasilitas
+  FASILITAS KEIMIGRASIAN BAGI ANAK > Kompetensi Pelaksana
+  FASILITAS KEIMIGRASIAN BAGI ANAK > Pengawasan Internal
+  FASILITAS KEIMIGRASIAN BAGI ANAK > Jumlah Pelaksana
+  FASILITAS KEIMIGRASIAN BAGI ANAK > Jaminan Pelayanan
+  FASILITAS KEIMIGRASIAN BAGI ANAK > Jaminan Keamanan dan Keselamatan Pelayanan
+  PEMBUATAN SURAT KETERANGAN > Pengertian
+  PEMBUATAN SURAT KETERANGAN > Persyaratan
+  PEMBUATAN SURAT KETERANGAN > Persyaratan Khusus
+  PEMBUATAN SURAT KETERANGAN > Negara Penerima Kebijakan
+  PEMBUATAN SURAT KETERANGAN > Sistem Mekanisme dan Prosedur
+  PEMBUATAN SURAT KETERANGAN > Jangka Waktu Pelayanan
+  PEMBUATAN SURAT KETERANGAN > Biaya/Tarif
+  PEMBUATAN SURAT KETERANGAN > Produk Pelayanan
+  PEMBUATAN SURAT KETERANGAN > Penanganan Pengaduan, Saran dan Masukan
+  PEMBUATAN SURAT KETERANGAN > Dasar Hukum
+  PEMBUATAN SURAT KETERANGAN > Sarana dan Prasarana dan/ atau Fasilitas
+  PEMBUATAN SURAT KETERANGAN > Kompetensi Pelaksana
+  PEMBUATAN SURAT KETERANGAN > Pengawasan Internal
+  PEMBUATAN SURAT KETERANGAN > Jumlah Pelaksana
+  PEMBUATAN SURAT KETERANGAN > Jaminan Pelayanan
+  PEMBUATAN SURAT KETERANGAN > Jaminan Keamanan dan Keselamatan Pelayanan
+  PENGGANTIAN PASPOR RI KARENA HILANG > Pengertian
+  PENGGANTIAN PASPOR RI KARENA HILANG > Persyaratan
+  PENGGANTIAN PASPOR RI KARENA HILANG > Persyaratan Tambahan
+  PENGGANTIAN PASPOR RI KARENA HILANG > Negara Penerima Kebijakan
+  PENGGANTIAN PASPOR RI KARENA HILANG > Sistem Mekanisme dan Prosedur
+  PENGGANTIAN PASPOR RI KARENA HILANG > Jangka Waktu Pelayanan
+  PENGGANTIAN PASPOR RI KARENA HILANG > Biaya/Tarif
+  PENGGANTIAN PASPOR RI KARENA HILANG > Produk Pelayanan
+  PENGGANTIAN PASPOR RI KARENA HILANG > Penanganan Pengaduan, Saran dan Masukan
+  PENGGANTIAN PASPOR RI KARENA HILANG > Dasar Hukum
+  PENGGANTIAN PASPOR RI KARENA HILANG > Sarana dan Prasarana dan/ atau Fasilitas
+  PENGGANTIAN PASPOR RI KARENA HILANG > Kompetensi Pelaksana
+  PENGGANTIAN PASPOR RI KARENA HILANG > Pengawasan Internal
+  PENGGANTIAN PASPOR RI KARENA HILANG > Jumlah Pelaksana
+  PENGGANTIAN PASPOR RI KARENA HILANG > Jaminan Pelayanan
+  PENGGANTIAN PASPOR RI KARENA HILANG > Jaminan Keamanan dan Keselamatan Pelayanan
+  PENGGANTIAN PASPOR RI KARENA RUSAK > Pengertian
+  PENGGANTIAN PASPOR RI KARENA RUSAK > Persyaratan
+  PENGGANTIAN PASPOR RI KARENA RUSAK > Persyaratan Tambahan
+  PENGGANTIAN PASPOR RI KARENA RUSAK > Negara Penerima Kebijakan
+  PENGGANTIAN PASPOR RI KARENA RUSAK > Sistem Mekanisme dan Prosedur
+  PENGGANTIAN PASPOR RI KARENA RUSAK > Jangka Waktu Pelayanan
+  PENGGANTIAN PASPOR RI KARENA RUSAK > Biaya/Tarif
+  PENGGANTIAN PASPOR RI KARENA RUSAK > Produk Pelayanan
+  PENGGANTIAN PASPOR RI KARENA RUSAK > Penanganan Pengaduan, Saran dan Masukan
+  PENGGANTIAN PASPOR RI KARENA RUSAK > Dasar Hukum
+  PENGGANTIAN PASPOR RI KARENA RUSAK > Sarana dan Prasarana dan/ atau Fasilitas
+  PENGGANTIAN PASPOR RI KARENA RUSAK > Kompetensi Pelaksana
+  PENGGANTIAN PASPOR RI KARENA RUSAK > Pengawasan Internal
+  PENGGANTIAN PASPOR RI KARENA RUSAK > Jumlah Pelaksana
+  PENGGANTIAN PASPOR RI KARENA RUSAK > Jaminan Pelayanan
+  PENGGANTIAN PASPOR RI KARENA RUSAK > Jaminan Keamanan dan Keselamatan Pelayanan
+  PENGGANTIAN PASPOR RI KARENA RUSAK > Contoh kondisi paspor rusak
+  PERUBAHAN DATA PASPOR RI > Pengertian
+  PERUBAHAN DATA PASPOR RI > Persyaratan
+  PERUBAHAN DATA PASPOR RI > Persyaratan Tambahan
+  PERUBAHAN DATA PASPOR RI > Negara Penerima Kebijakan
+  PERUBAHAN DATA PASPOR RI > Sistem Mekanisme dan Prosedur
+  PERUBAHAN DATA PASPOR RI > Jangka Waktu Pelayanan
+  PERUBAHAN DATA PASPOR RI > Biaya/Tarif
+  PERUBAHAN DATA PASPOR RI > Penanganan Pengaduan, Saran dan Masukan
+  PERUBAHAN DATA PASPOR RI > Dasar Hukum
+  PERUBAHAN DATA PASPOR RI > Sarana dan Prasarana dan/ atau Fasilitas
+  PERUBAHAN DATA PASPOR RI > Kompetensi Pelaksana
+  PERUBAHAN DATA PASPOR RI > Pengawasan Internal
+  PERUBAHAN DATA PASPOR RI > Jumlah Pelaksana
+  PERUBAHAN DATA PASPOR RI > Jaminan Pelayanan
+  PERUBAHAN DATA PASPOR RI > Jaminan Keamanan dan Keselamatan Pelayanan
+  PERUBAHAN DATA PASPOR RI > Apakah nama pada paspor dapat diperbaiki atau diubah?
+  PERUBAHAN DATA PASPOR RI > Apakah tempat lahir atau tanggal lahir pada paspor dapat
+  PERUBAHAN DATA PASPOR RI > Apakah jenis kelamin pada paspor dapat diubah?
+  PERUBAHAN DATA PASPOR RI > Dokumen apa yang dapat menjadi dasar perubahan data paspor?
+  PERUBAHAN DATA PASPOR RI > Apakah perubahan data paspor memerlukan pemeriksaan atau
+  PEMBUATAN PASPOR DENGAN PENDAFTARAN > Pengertian
+  PEMBUATAN PASPOR DENGAN PENDAFTARAN > Persyaratan
+  PEMBUATAN PASPOR DENGAN PENDAFTARAN > Persyaratan Tambahan
+  PEMBUATAN PASPOR DENGAN PENDAFTARAN > Negara Penerima Kebijakan
+  PEMBUATAN PASPOR DENGAN PENDAFTARAN > Sistem Mekanisme dan Prosedur
+  PEMBUATAN PASPOR DENGAN PENDAFTARAN > Jangka Waktu Pelayanan
+  PEMBUATAN PASPOR DENGAN PENDAFTARAN > Biaya/Tarif
+  PEMBUATAN PASPOR DENGAN PENDAFTARAN > Penanganan Pengaduan, Saran dan Masukan
+  PEMBUATAN PASPOR DENGAN PENDAFTARAN > Dasar Hukum
+  PEMBUATAN PASPOR DENGAN PENDAFTARAN > Sarana dan Prasarana dan/ atau Fasilitas
+  PEMBUATAN PASPOR DENGAN PENDAFTARAN > Kompetensi Pelaksana
+  PEMBUATAN PASPOR DENGAN PENDAFTARAN > Pengawasan Internal
+  PEMBUATAN PASPOR DENGAN PENDAFTARAN > Jumlah Pelaksana
+  PEMBUATAN PASPOR DENGAN PENDAFTARAN > Jaminan Pelayanan
+  PEMBUATAN PASPOR DENGAN PENDAFTARAN > Jaminan Keamanan dan Keselamatan Pelayanan
+  PEMBUATAN PASPOR DENGAN PENDAFTARAN > tarif paspor non-elektronik masa berlaku paling lama 5 tahun
+  PEMBUATAN PASPOR DENGAN PENDAFTARAN > tarif paspor non-elektronik masa berlaku paling lama 10 tahun
+  Informasi Tambahan > Apa yang dimaksud dengan paspor
+  Informasi Tambahan > Berapa lama masa berlaku paspor paling lama
+  Informasi Tambahan > dokumen asli perlu dibawa saat datang ke kantor imigrasi
+  Informasi Tambahan > scan atau foto dokumen di ponsel dapat menggantikan dokumen asli
+  Informasi Tambahan > pemohon harus datang sendiri ke kantor imigrasi
+  Informasi Tambahan > yang dilakukan pada saat kedatangan di kantor imigrasi
+  Informasi Tambahan > paspor dapat diganti karena masa berlaku
+  Informasi Tambahan > persyaratan umum penggantian paspor lama
+  Informasi Tambahan > paspor lama harus dibawa saat penggantian
+  Informasi Tambahan > yang dimaksud keadaan kahar atau force majeure dalam
+  Informasi Tambahan > yang dilakukan jika permohonan perubahan data ditolak
+  Informasi Tambahan > e-paspor otomatis berarti bebas visa ke semua negara
+  Informasi Tambahan > anak harus hadir saat proses pembuatan paspor anak
+  Informasi Tambahan > kanal resmi Kementerian Luar Negeri
+  Informasi Tambahan > yang dapat dilakukan jika paspor hilang saat berada di luar
+  Informasi Tambahan > informasi yang tersedia dalam Safe Travel
+  Informasi Tambahan > portal Peduli WNI menyediakan layanan penerbitan paspor
+  Layanan Keimigrasian bagi Warga Negara Asing > yang dimaksud dengan Orang Asing dalam layanan keimigrasian
+  Layanan Keimigrasian bagi Warga Negara Asing > perbedaan visa dan izin tinggal
+  Layanan Keimigrasian bagi Warga Negara Asing > jenis izin tinggal bagi WNA di Indonesia
+  Layanan Keimigrasian bagi Warga Negara Asing > cara WNA mengajukan visa Indonesia
+  Layanan Keimigrasian bagi Warga Negara Asing > informasi yang perlu disiapkan untuk permohonan visa
+  Layanan Keimigrasian bagi Warga Negara Asing > masa berlaku paspor yang dibutuhkan untuk mengajukan visa
+  Layanan Keimigrasian bagi Warga Negara Asing > perbedaan visa kunjungan satu kali dan beberapa kali
+  Layanan Keimigrasian bagi Warga Negara Asing > Pengertian visa kunjungan 60 hari
+  Layanan Keimigrasian bagi Warga Negara Asing > Pengertian visa kunjungan 180 hari
+  Layanan Keimigrasian bagi Warga Negara Asing > Pengertian Visa Tinggal Terbatas
+  Layanan Keimigrasian bagi Warga Negara Asing > contoh visa kerja untuk WNA
+  Layanan Keimigrasian bagi Warga Negara Asing > contoh visa investor untuk WNA
+  Layanan Keimigrasian bagi Warga Negara Asing > contoh visa pendidikan untuk WNA
+  Layanan Keimigrasian bagi Warga Negara Asing > contoh visa keluarga untuk WNA
+  Layanan Keimigrasian bagi Warga Negara Asing > Pengertian visa repatriasi atau keturunan eks-WNI
+  Layanan Keimigrasian bagi Warga Negara Asing > Pengertian visa rumah kedua atau Second Home Visa
+  Layanan Keimigrasian bagi Warga Negara Asing > Pengertian Golden Visa Indonesia
+  Layanan Keimigrasian bagi Warga Negara Asing > ITK dapat dialihkan menjadi ITAS
+  Layanan Keimigrasian bagi Warga Negara Asing > Pengertian bridging visa
+  Layanan Keimigrasian bagi Warga Negara Asing > fungsi sponsor atau penjamin bagi WNA
+  Layanan Keimigrasian bagi Warga Negara Asing > sponsor harus sama untuk alih status ITK ke ITAS
+  Layanan Keimigrasian bagi Warga Negara Asing > yang perlu diperhatikan WNA yang datang untuk bekerja
+  Layanan Keimigrasian bagi Warga Negara Asing > WNA yang menikah dengan WNI mengajukan izin tinggal
+  Layanan Keimigrasian bagi Warga Negara Asing > anak hasil perkawinan WNA-WNI memiliki kategori visa khusus
+  Layanan Keimigrasian bagi Warga Negara Asing > Pengertian Global Citizen of Indonesia atau GCI
+  Layanan Keimigrasian bagi Warga Negara Asing > Pengertian dimaksud overstay bagi WNA?
+  Layanan Keimigrasian bagi Warga Negara Asing > Berapa biaya overstay WNA
+  Layanan Keimigrasian bagi Warga Negara Asing > yang harus dilakukan jika izin tinggal hampir habis
+  Layanan Keimigrasian bagi Warga Negara Asing > permohonan visa dapat dilakukan secara online
+  Layanan Keimigrasian bagi Warga Negara Asing > perpanjangan izin tinggal dapat dilakukan online
+  Layanan Keimigrasian bagi Warga Negara Asing > Di kantor imigrasi mana WNA mengurus izin tinggal
+  Layanan Keimigrasian bagi Warga Negara Asing > Apakah semua kantor imigrasi memberikan layanan WNA yang sama
+  SPLP Surat Perjalanan Laksana Paspor > tarif SPLP untuk WNI
+  SPLP Surat Perjalanan Laksana Paspor > tarif SPLP untuk WNA
+  SPLP Surat Perjalanan Laksana Paspor > aturan terbaru yang menjadi dasar pengaturan paspor biasa dan SPLP
+  SPLP Surat Perjalanan Laksana Paspor > Pengertian Surat Perjalanan Laksana Paspor atau SPLP
+  SPLP Surat Perjalanan Laksana Paspor > aturan terbaru yang menjadi dasar pengaturan paspor biasa dan SPLP
+  SPLP Surat Perjalanan Laksana Paspor > Jenis SPLP
+  SPLP Surat Perjalanan Laksana Paspor > SPLP untuk WNI
+  SPLP Surat Perjalanan Laksana Paspor > SPLP WNI bentuk lembaran
+  SPLP Surat Perjalanan Laksana Paspor > SPLP WNI bentuk lembaran
+  SPLP Surat Perjalanan Laksana Paspor > SPLP WNI bentuk buku
+  SPLP Surat Perjalanan Laksana Paspor > SPLP untuk WNA
+  M-PASPOR > cara mengajukan paspor baru Dengan M-Paspor
+  M-PASPOR > paspor hilang dapat langsung dibuat ulang melalui M-Paspor
+  M-PASPOR > Untuk apa aplikasi M-Paspor
+  M-PASPOR > aplikasi M-Paspor mengalami Request Timed Out
+  M-PASPOR > jika tidak bisa login ke M-Paspor
+  M-PASPOR > nomor telepon sudah terdaftar padahal belum pernah
+  M-PASPOR > yang harus dilakukan jika email pada M-Paspor dianggap tidak valid
+  M-PASPOR > jadwal dan kuota M-Paspor selalu sama di semua kantor
+  M-PASPOR > M-Paspor dapat digunakan untuk paspor hilang atau rusak
+  M-PASPOR > Bagaimana jika surat pengantar kantor imigrasi tidak bisa diunduh
+  Paspor Elektronik > Apa itu paspor elektronik?
+  Paspor Elektronik > tarif paspor elektronik masa berlaku paling lama 5 tahun?
+  Paspor Elektronik > tarif paspor biasa elektronik masa berlaku paling lama 10 tahun?
+  Paspor Elektronik > tarif paspor biasa elektronik masa berlaku paling lama 10 tahun?
+  Paspor Elektronik > Berapa tarif paspor elektronik 5 tahun?
+  Paspor Elektronik > Berapa tarif paspor elektronik 10 tahun?
+  Paspor Elektronik > Apa perbedaan paspor elektronik dan paspor nonelektronik?
+  Paspor Elektronik > Apakah paspor elektronik sama dengan paspor biasa?
+  Paspor Elektronik > Apakah paspor elektronik membuat bebas visa?
+  Paspor Elektronik > Berapa masa berlaku paspor elektronik?
+  Paspor Elektronik > Siapa yang dapat memperoleh paspor biasa elektronik dengan
+  Paspor Elektronik > Siapa yang memperoleh paspor dengan masa berlaku paling lama
+  Paspor Elektronik > Bagaimana cara mengajukan paspor elektronik?
+  Paspor Elektronik > Apa saja proses penerbitan paspor elektronik?
+  Paspor Elektronik > Apakah paspor elektronik bisa diajukan melalui M-Paspor?
+  Paspor Elektronik > Apa saja dokumen untuk membuat paspor elektronik baru?
+  Paspor Elektronik > Apakah paspor elektronik berbeda dari visa?
+  Paspor Elektronik > Apakah semua negara menerima paspor elektronik?
+  Paspor Elektronik > Apa dasar hukum tarif paspor elektronik?
+  Paspor Elektronik > Apa aturan terbaru mengenai paspor biasa dan paspor
+
+=================================================================
+[3/8] Menyiapkan alias heading dan subheading
+=================================================================
+Alias heading yang perlu dibuat: 0
+Alias subheading yang perlu dibuat: 0
+Record heading yang diproses: 3057
+
+=================================================================
+[4/8] Membandingkan ID dan hash
+=================================================================
+
+Perbandingan CHUNK:
+  BARU    : 335
+  BERUBAH : 0
+  SAMA    : 0
+  HAPUS   : 0
+
+Perbandingan HEADING:
+  BARU    : 3057
+  BERUBAH : 0
+  SAMA    : 0
+  HAPUS   : 0
+
+=================================================================
+[5/8] Membuat staging dan mempertahankan seluruh data lama
+=================================================================
+Generation staging: a2381bdb4c6e
+Total chunk awal staging: 0
+Total heading awal staging: 0
+
+=================================================================
+[6/8] Menambahkan, memperbarui, dan menghapus chunk
+=================================================================
+
+Chunk:
+  Total item       : 335
+  Vektor digunakan : 0
+  Embedding baru   : 335
+  Progress embedding: 200/335
+  Progress embedding: 335/335
+Chunk lama yang dihapus: 0
+Chunk baru/berubah disimpan: 335
+Chunk lama dihapus: 0
+
+=================================================================
+[7/8] Memperbarui heading, subheading, dan alias
+=================================================================
+
+Heading:
+  Total item       : 3057
+  Vektor digunakan : 0
+  Embedding baru   : 3057
+  Progress embedding: 200/3057
+  Progress embedding: 400/3057
+  Progress embedding: 600/3057
+  Progress embedding: 800/3057
+  Progress embedding: 1000/3057
+  Progress embedding: 1200/3057
+  Progress embedding: 1400/3057
+  Progress embedding: 1600/3057
+  Progress embedding: 1800/3057
+  Progress embedding: 2000/3057
+  Progress embedding: 2200/3057
+  Progress embedding: 2400/3057
+  Progress embedding: 2600/3057
+  Progress embedding: 2800/3057
+  Progress embedding: 3000/3057
+  Progress embedding: 3057/3057
+Heading/subheading/alias yang tidak digunakan lagi: 0
+
+=================================================================
+[8/8] Validasi dan aktivasi database
+=================================================================
+Validasi berhasil.
+Total chunk: 335
+Total heading: 3057
+
+Membangun knowledge_index.json dari seluruh dokumen...
+Knowledge index diperbarui dari 335 chunk seluruh dokumen.
+
+Database berhasil diaktifkan:
+legacy -> a2381bdb4c6e
+
+=================================================================
+INGESTION BERHASIL
+=================================================================
+PDF             : dataset_sop_kanim.pdf
+Generation      : a2381bdb4c6e
+Chunk BARU      : 335
+Chunk BERUBAH   : 0
+Chunk SAMA      : 0
+Chunk DIHAPUS   : 0
+Total chunk DB  : 335
+Total heading DB: 3057
+Waktu proses    : 172.44 detik
+Database        : {'generation': 'a2381bdb4c6e', 'chunk_collection': 'knowledge_chunks__g_a2381bdb4c6e', 'heading_collection': 'knowledge_headings__g_a2381bdb4c6e', 'chunk_count': 335, 'heading_count': 3057}

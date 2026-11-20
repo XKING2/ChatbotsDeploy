@@ -6,7 +6,7 @@ from retrival.semantic_search import semantic_search
 from userquery.query_embedding import create_query_embedding
 from userquery.query_normalizer import normalize_query
 
-DEFAULT_QUESTION = "Berapa Tarif Perpanjangan Visa on Arrival"
+DEFAULT_QUESTION = "Apa Itu GV"
 
 
 def print_separator(title):

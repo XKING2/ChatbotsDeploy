@@ -1,0 +1,20 @@
+{
+  "day": "2026-11-19",
+  "used": {
+    "fb05ad05:models/gemini-embedding-2": 90,
+    "0fe4227f:models/gemini-embedding-2": 90,
+    "7b367313:models/gemini-embedding-2": 90,
+    "2c58fc34:models/gemini-embedding-2": 90,
+    "5cc1159d:models/gemini-embedding-2": 810,
+    "34402d4a:models/gemini-embedding-2": 40,
+    "bf84dbaa:models/gemini-embedding-2": 780,
+    "4eddc1b4:models/gemini-embedding-2": 700,
+    "335cb747:models/gemini-embedding-2": 700
+  },
+  "exhausted": {
+    "2c58fc34:models/gemini-embedding-2": "EmbedContentRequestsPerDayPerProjectPerModel-FreeTier, batas=1000 | 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more info",
+    "fb05ad05:models/gemini-embedding-2": "EmbedContentRequestsPerDayPerProjectPerModel-FreeTier, batas=1000 | 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more info",
+    "0fe4227f:models/gemini-embedding-2": "EmbedContentRequestsPerDayPerProjectPerModel-FreeTier, batas=1000 | 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more info",
+    "34402d4a:models/gemini-embedding-2": "EmbedContentRequestsPerDayPerProjectPerModel-FreeTier, batas=1000 | 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more info"
+  }
+}
