@@ -1,0 +1,112 @@
+=================================================================
+KNOWLEDGE BASE INGESTION
+=================================================================
+PDF          : C:\Users\IT\Documents\Chatbot\data\pdf\TesT Update Data.pdf
+Source ID    : src_ecf5cf6620074136
+Source file  : test update data.pdf
+Force        : False
+Generation   : a2381bdb4c6e
+Database     : {'generation': 'a2381bdb4c6e', 'chunk_collection': 'knowledge_chunks__g_a2381bdb4c6e', 'heading_collection': 'knowledge_headings__g_a2381bdb4c6e', 'chunk_count': 335, 'heading_count': 3057}
+
+=================================================================
+[1/8] Parsing dan preprocessing PDF
+=================================================================
+Blok hasil parsing: 9
+Blok setelah preprocessing: 9
+
+=================================================================
+[2/8] Membentuk section, chunk, heading, dan subheading
+=================================================================
+Section   : 1
+Chunk     : 1
+Heading   : 1
+  PERPANJANGAN VISA ON ARRIVAL (VOA) > Biaya/Tarif
+
+=================================================================
+[3/8] Menyiapkan alias heading dan subheading
+=================================================================
+Alias heading yang perlu dibuat: 0
+Alias subheading yang perlu dibuat: 0
+Record heading yang diproses: 27
+
+=================================================================
+[4/8] Membandingkan ID dan hash
+=================================================================
+
+Perbandingan CHUNK:
+  BARU    : 1
+  BERUBAH : 0
+  SAMA    : 0
+  HAPUS   : 0
+
+Perbandingan HEADING:
+  BARU    : 0
+  BERUBAH : 1
+  SAMA    : 26
+  HAPUS   : 0
+
+=================================================================
+[5/8] Membuat staging dan mempertahankan seluruh data lama
+=================================================================
+Generation staging: 2d7c87f50d01
+  Menyalin chunk: 335/335
+  Menyalin heading: 500/3057
+  Menyalin heading: 1000/3057
+  Menyalin heading: 1500/3057
+  Menyalin heading: 2000/3057
+  Menyalin heading: 2500/3057
+  Menyalin heading: 3000/3057
+  Menyalin heading: 3057/3057
+Total chunk awal staging: 335
+Total heading awal staging: 3057
+
+=================================================================
+[6/8] Menambahkan, memperbarui, dan menghapus chunk
+=================================================================
+
+Chunk:
+  Total item       : 1
+  Vektor digunakan : 0
+  Embedding baru   : 1
+  Progress embedding: 1/1
+Chunk lama yang dihapus: 0
+Chunk baru/berubah disimpan: 1
+Chunk lama dihapus: 0
+
+=================================================================
+[7/8] Memperbarui heading, subheading, dan alias
+=================================================================
+
+Heading:
+  Total item       : 27
+  Vektor digunakan : 26
+  Embedding baru   : 1
+  Progress embedding: 1/1
+Heading/subheading/alias yang tidak digunakan lagi: 0
+
+=================================================================
+[8/8] Validasi dan aktivasi database
+=================================================================
+Validasi berhasil.
+Total chunk: 336
+Total heading: 3057
+
+Membangun knowledge_index.json dari seluruh dokumen...
+Knowledge index diperbarui dari 336 chunk seluruh dokumen.
+
+Database berhasil diaktifkan:
+a2381bdb4c6e -> 2d7c87f50d01
+
+=================================================================
+INGESTION BERHASIL
+=================================================================
+PDF             : test update data.pdf
+Generation      : 2d7c87f50d01
+Chunk BARU      : 1
+Chunk BERUBAH   : 0
+Chunk SAMA      : 0
+Chunk DIHAPUS   : 0
+Total chunk DB  : 336
+Total heading DB: 3057
+Waktu proses    : 18.51 detik
+Database        : {'generation': '2d7c87f50d01', 'chunk_collection': 'knowledge_chunks__g_2d7c87f50d01', 'heading_collection': 'knowledge_headings__g_2d7c87f50d01', 'chunk_count': 336, 'heading_count': 3057}

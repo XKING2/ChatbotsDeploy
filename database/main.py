@@ -52,13 +52,20 @@ from database.chroma_db import (
 CHUNK_BATCH_SIZE = 200
 EMBEDDING_BATCH_SIZE = 20
 COPY_BATCH_SIZE = 500
-DEFAULT_PDF_NAME = "Dataset_SOP_Kanim.pdf"
+DEFAULT_PDF_NAME = "TesT Update Data.pdf"
 
 ALIAS_CACHE_PATH = os.path.join(CHROMA_DB_PATH, "alias_cache.json")
 REPORT_DIR = os.path.join(CHROMA_DB_PATH, "ingestion_reports")
 
 VERBOSE = "--ringkas" not in sys.argv
 FORCE = "--force" in sys.argv
+
+# Hapus sumber lama: --hapus-source=src_xxxx (boleh diulang)
+REMOVE_SOURCES = [
+    arg.split("=", 1)[1].strip()
+    for arg in sys.argv
+    if arg.startswith("--hapus-source=") and arg.split("=", 1)[1].strip()
+]
 
 REPORT = []
 
@@ -116,6 +123,41 @@ def clean_aliases(aliases):
 
 def as_list(vector):
     return [float(value) for value in vector]
+
+
+def get_vectors(collection, ids):
+    """
+    {id: vector} untuk ID yang embedding-nya bisa dibaca.
+
+    Jika Chroma gagal membaca (indeks vektor tidak sinkron), batch dibagi
+    dua berulang kali sampai ID bermasalah terisolasi dan dilewati.
+    """
+
+    if not ids:
+        return {}
+
+    try:
+        data = collection.get(ids=ids, include=["embeddings"])
+
+        if data["embeddings"] is None:
+            return {}
+
+        return {
+            rid: as_list(vector)
+            for rid, vector in zip(data["ids"], data["embeddings"])
+            if vector is not None and len(vector)
+        }
+
+    except Exception:
+        if len(ids) == 1:
+            return {}
+
+        middle = len(ids) // 2
+
+        return {
+            **get_vectors(collection, ids[:middle]),
+            **get_vectors(collection, ids[middle:]),
+        }
 
 
 def batches(collection, include, where=None):
@@ -271,19 +313,35 @@ def copy_collection(source, target, label):
     total = source.count()
     copied = 0
 
-    for data in batches(
-        source, ["documents", "metadatas", "embeddings"]
-    ):
-        if data["embeddings"] is None:
-            raise RuntimeError(
-                f"Embedding lama {label} tidak ditemukan."
+    for data in batches(source, ["documents", "metadatas"]):
+        ids = data["ids"]
+        vectors = get_vectors(source, ids)
+
+        # Embedding lama tidak terbaca (indeks vektor Chroma tidak sinkron):
+        # buat ulang dari dokumen yang tersimpan.
+        missing = [i for i, rid in enumerate(ids) if rid not in vectors]
+
+        if missing:
+            generated = create_embeddings_batch(
+                [data["documents"][i] or "" for i in missing],
+                batch_size=EMBEDDING_BATCH_SIZE
+            )
+
+            validate_vectors(generated, len(missing), label)
+
+            for i, vector in zip(missing, generated):
+                vectors[ids[i]] = as_list(vector)
+
+            log(
+                f"  PERINGATAN: {len(missing)} embedding {label} "
+                f"tidak terbaca dan dibuat ulang."
             )
 
         target.upsert(
-            ids=data["ids"],
+            ids=ids,
             documents=data["documents"],
             metadatas=data["metadatas"],
-            embeddings=[as_list(v) for v in data["embeddings"]]
+            embeddings=[vectors[rid] for rid in ids]
         )
 
         copied += len(data["ids"])
@@ -308,21 +366,16 @@ def old_vectors(collection, wanted):
     for start in range(0, len(ids), COPY_BATCH_SIZE):
         data = collection.get(
             ids=ids[start:start + COPY_BATCH_SIZE],
-            include=["metadatas", "embeddings"]
+            include=["metadatas"]
         )
 
-        if data["embeddings"] is None:
-            continue
+        same_hash = [
+            rid
+            for rid, meta in zip(data["ids"], data["metadatas"])
+            if (meta or {}).get("content_hash") == wanted[rid]
+        ]
 
-        for rid, meta, vector in zip(
-            data["ids"], data["metadatas"], data["embeddings"]
-        ):
-            if (
-                (meta or {}).get("content_hash") == wanted[rid]
-                and vector is not None
-                and len(vector)
-            ):
-                found[rid] = as_list(vector)
+        found.update(get_vectors(collection, same_hash))
 
     return found
 
@@ -570,6 +623,87 @@ def delete_stale_chunks(collection, source_id, current_ids):
         log(f"  HAPUS: {record_id}")
 
     return len(stale_ids)
+
+
+def list_sources(collection):
+    """{source_id: (source_file, jumlah_chunk)}"""
+
+    sources = {}
+
+    for data in batches(collection, ["metadatas"]):
+        for metadata in data["metadatas"]:
+            metadata = metadata or {}
+            sid = metadata.get("source_id") or "(tanpa source_id)"
+            file, count = sources.get(sid, (metadata.get("source_file"), 0))
+            sources[sid] = (file, count + 1)
+
+    return sources
+
+
+def delete_sources(collection, source_ids, current_source_id):
+    """Hapus seluruh chunk milik source_id lama (opsional: --hapus-source)."""
+
+    for source_id in source_ids:
+        if source_id == current_source_id:
+            raise RuntimeError(
+                "--hapus-source tidak boleh sama dengan PDF yang diproses."
+            )
+
+        ids = collection.get(
+            where={"source_id": source_id}, include=[]
+        )["ids"]
+
+        if not ids:
+            raise RuntimeError(f"source_id tidak ditemukan: {source_id}")
+
+        for start in range(0, len(ids), COPY_BATCH_SIZE):
+            collection.delete(ids=ids[start:start + COPY_BATCH_SIZE])
+
+        log(f"Sumber lama dihapus: {source_id} ({len(ids)} chunk)")
+
+
+def delete_replaced_chunks(collection, source_id, chunks):
+    """
+    Satu subheading hanya boleh dimiliki satu PDF.
+
+    Chunk milik PDF lain dengan (heading_id, subheading_id) yang sama
+    dengan chunk PDF ini dihapus; PDF yang terbaru menggantikan.
+    Subheading lain milik PDF tersebut tidak disentuh.
+    """
+
+    keys = {
+        (chunk.get("heading_id"), chunk.get("subheading_id"))
+        for chunk in chunks
+    }
+
+    replaced = []
+
+    for data in batches(collection, ["metadatas"]):
+        for record_id, metadata in zip(data["ids"], data["metadatas"]):
+            metadata = metadata or {}
+
+            if (
+                metadata.get("source_id") != source_id
+                and (
+                    metadata.get("heading_id"),
+                    metadata.get("subheading_id"),
+                ) in keys
+            ):
+                replaced.append(
+                    (record_id, metadata.get("source_file"))
+                )
+
+    for start in range(0, len(replaced), COPY_BATCH_SIZE):
+        collection.delete(
+            ids=[rid for rid, _ in replaced[start:start + COPY_BATCH_SIZE]]
+        )
+
+    log(f"Chunk PDF lain yang digantikan: {len(replaced)}")
+
+    for record_id, file in replaced:
+        log(f"  DIGANTIKAN: {record_id} | {file}")
+
+    return len(replaced)
 
 
 # ============================================================
@@ -1029,6 +1163,25 @@ def main():
         print_comparison("CHUNK", chunk_status, chunk_removed)
         print_comparison("HEADING", head_status, [])
 
+        sources = list_sources(active_chunks)
+
+        log("\nSumber PDF di database aktif:")
+
+        for sid, (file, count) in sources.items():
+            marker = "   <- PDF ini" if sid == source_id else ""
+            log(f"  {sid} | {file} | {count} chunk{marker}")
+
+        for sid, (file, _) in sources.items():
+            if (
+                sid != source_id
+                and os.path.basename(str(file)) == os.path.basename(source_file)
+            ):
+                log(
+                    f"PERINGATAN: {sid} memiliki nama file yang sama "
+                    f"tetapi source_id berbeda. Jika itu versi lama, "
+                    f"jalankan dengan --hapus-source={sid}"
+                )
+
         for record_id in chunk_removed:
             old_hash = old_chunks[record_id]["hash"]
             log(
@@ -1066,6 +1219,12 @@ def main():
             source_id,
             [c["content_chunk_id"] for c in chunks]
         )
+
+        replaced_chunks = delete_replaced_chunks(
+            staging_chunks, source_id, chunks
+        )
+
+        delete_sources(staging_chunks, REMOVE_SOURCES, source_id)
 
         chunk_counts = count_status(chunk_status)
 
@@ -1114,6 +1273,7 @@ def main():
         log(f"Chunk BERUBAH   : {chunk_counts['BERUBAH']}")
         log(f"Chunk SAMA      : {chunk_counts['SAMA']}")
         log(f"Chunk DIHAPUS   : {deleted_chunks}")
+        log(f"Chunk DIGANTIKAN: {replaced_chunks}")
         log(f"Total chunk DB  : {chunk_total}")
         log(f"Total heading DB: {heading_total}")
         log(f"Waktu proses    : {time.perf_counter() - started:.2f} detik")
